@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'image_raw = tictactoe_perception.image_raw:main',
+            'enhancement_demo = tictactoe_perception.enhancement_demo:main',
         ],
     },
 )
