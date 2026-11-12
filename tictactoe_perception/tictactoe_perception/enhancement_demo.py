@@ -4,20 +4,16 @@ from tictactoe_perception.comparison import show_comparison
 import rclpy
 from tictactoe_perception.image_raw import ImageRaw
 
+
 class EnhancementDemo:
     """!
     @brief Manage brightness controls, image enhancement, and comparison display.
     """
+
     def __init__(self):
         self.image_enhancer = ImageEnhancer()
-        cv2.namedWindow("Raw | Enhanced")
-        cv2.createTrackbar(
-            "Brightness",
-            "Raw | Enhanced",
-            255,
-            510,
-            lambda value: None
-        )
+        cv2.namedWindow("Raw | Enhanced", cv2.WINDOW_NORMAL)
+        cv2.createTrackbar("Brightness", "Raw | Enhanced", 255, 510, lambda value: None)
         self.roi = None
 
         self.is_selecting = False
@@ -37,11 +33,7 @@ class EnhancementDemo:
         preview_image = raw_image.copy()
         if self.is_selecting:
             cv2.rectangle(
-                preview_image,
-                self.selection_start,
-                self.selection_end,
-                (0, 255, 0),
-                1
+                preview_image, self.selection_start, self.selection_end, (0, 255, 0), 1
             )
         show_comparison(preview_image, enhanced_image)
 
