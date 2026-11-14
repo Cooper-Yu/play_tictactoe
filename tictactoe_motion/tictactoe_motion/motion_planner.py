@@ -5,7 +5,7 @@ from rclpy.time import Time
 from tf2_ros import TransformException
 from geometry_msgs.msg import Pose
 import rclpy
-from moveit_msgs.action import MoveGroup
+from moveit_msgs.action import MoveGroup, ExecuteTrajectory
 from shape_msgs.msg import SolidPrimitive
 from moveit_msgs.msg import PositionConstraint, OrientationConstraint, Constraints
 from rclpy.action import ActionClient
@@ -13,10 +13,12 @@ from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 import math
 
+
 class MotionPlanner(Node):
     def __init__(self):
         super().__init__("motion_planner")
         self.current_joint_state = None
+        self.planned_trajectory = None
         self.joint_state_subscription = self.create_subscription(
             JointState, "/joint_states", self.joint_state_callback, 10
         )
@@ -25,13 +27,16 @@ class MotionPlanner(Node):
         self.state_timer = self.create_timer(1.0, self.report_current_state)
 
         self.move_client = ActionClient(self, MoveGroup, "/move_action")
+        self.execute_client = ActionClient(
+            self, ExecuteTrajectory, "/execute_trajectory"
+        )
 
         self.demo_timer = self.create_timer(3.0, self.run_planning_demo)
 
         self.declare_parameter("axis", "x")
         self.declare_parameter("distance", 0.0)
-        self.declare_parameter('velocity_scaling', 0.1)
-        self.declare_parameter('acceleration_scaling', 0.1)
+        self.declare_parameter("velocity_scaling", 0.1)
+        self.declare_parameter("acceleration_scaling", 0.1)
 
     def joint_state_callback(self, msg):
         self.current_joint_state = msg
@@ -109,13 +114,13 @@ class MotionPlanner(Node):
     def build_planning_goal(self, target_pose, current_joint_state):
         goal = MoveGroup.Goal()
 
-        velocity_scaling = self.get_parameter('velocity_scaling').value
-        acceleration_scaling = self.get_parameter('acceleration_scaling').value
+        velocity_scaling = self.get_parameter("velocity_scaling").value
+        acceleration_scaling = self.get_parameter("acceleration_scaling").value
         if not 0.0 < velocity_scaling <= 1.0:
-            self.get_logger().warning('velocity_scaling must be in (0, 1]')
+            self.get_logger().warning("velocity_scaling must be in (0, 1]")
             return None
         if not 0.0 < acceleration_scaling <= 1.0:
-            self.get_logger().warning('acceleration_scaling must be in (0, 1]')
+            self.get_logger().warning("acceleration_scaling must be in (0, 1]")
             return None
 
         goal.request.group_name = "arm"
@@ -260,17 +265,59 @@ class MotionPlanner(Node):
         self.demo_timer.cancel()
         axis = self.get_parameter("axis").value
         distance = self.get_parameter("distance").value
-        if axis not in ('x', 'y', 'z'):
+        if axis not in ("x", "y", "z"):
             self.get_logger().warning("Invalid axis: expected 'x', 'y', or 'z'")
             return
         if not math.isfinite(distance):
-            self.get_logger().warning('Distance must be finite')
+            self.get_logger().warning("Distance must be finite")
             return
         if distance == 0.0:
             self.get_logger().info("Distance is zero, skipping planning")
             return
         self.request_plan(axis, distance)
 
+    def execute_planned_trajectory(self):
+        if self.planned_trajectory is None:
+            self.get_logger().warning("No planned trajectory to execute")
+            return
+        if not self.execute_client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().warning("Trajectory execution server unavailable")
+            return
+        execute_goal = ExecuteTrajectory.Goal()
+        execute_goal.trajectory = self.planned_trajectory
+        self.execute_goal_future = self.execute_client.send_goal_async(execute_goal)
+        self.execute_goal_future.add_done_callback(
+            self.execution_goal_response_callback
+        )
+
+    def execution_goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warning('Execution goal rejected')
+            return
+        self.get_logger().info('Execution goal accepted')
+        self.execute_result_future = goal_handle.get_result_async()
+        self.execute_result_future.add_done_callback(
+            self.execution_result_callback
+        )
+
+    def execution_result_callback(self, future):
+        response = future.result()
+        status = response.status
+        result = response.result
+        if status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().info('Execution canceled')
+            return
+        if (
+            status != GoalStatus.STATUS_SUCCEEDED
+            or result.error_code.val != MoveItErrorCodes.SUCCESS
+        ):
+            self.get_logger().warning(
+                f'Execution failed: status={status}, '
+                f'error={result.error_code.val}'
+            )
+            return
+        self.get_logger().info('Execution succeeded')
 
 def main(args=None):
     rclpy.init(args=args)
