@@ -180,10 +180,51 @@ class MotionPlanner(Node):
             self.planned_trajectory = result.planned_trajectory
             joint_trajectory = self.planned_trajectory.joint_trajectory
 
+            if not joint_trajectory.points:
+                self.get_logger().warning('Planned trajectory is empty')
+                self.planned_trajectory = None
+                return
+
             self.get_logger().info(
                 f'Planned joints: {list(joint_trajectory.joint_names)}, '
                 f'trajectory points: {len(joint_trajectory.points)}'
             )
+
+            start_positions = joint_trajectory.points[0].positions
+            end_positions = joint_trajectory.points[-1].positions
+
+            for name, start, end in zip(
+                joint_trajectory.joint_names,
+                start_positions,
+                end_positions
+            ):
+                self.get_logger().info(
+                    f'{name}: start={start:.6f}, end={end:.6f}, '
+                    f'delta={end - start:.6f} rad'
+                )
+            for index, point in enumerate(joint_trajectory.points):
+                point_summary = ', '.join(
+                    f'{name}={position:.6f}'
+                    for name, position in zip(
+                        joint_trajectory.joint_names,
+                        point.positions
+                    )
+                )
+                self.get_logger().info(f'Point {index}: {point_summary}')
+            for joint_index, name in enumerate(joint_trajectory.joint_names):
+                positions = [
+                    point.positions[joint_index]
+                    for point in joint_trajectory.points
+                ]
+                max_step = max(
+                    (
+                        abs(current - previous)
+                        for previous, current in zip(positions, positions[1:])
+                    ),
+                    default=0.0
+                )
+                self.get_logger().info(f'{name}: max adjacent change={max_step:.6f} rad')
+
         else:
             self.get_logger().warning(
                 f'Planning failed: status={status}, '
