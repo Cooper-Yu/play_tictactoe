@@ -20,6 +20,8 @@ class MotionPlanner(Node):
         super().__init__("motion_planner")
         self.current_joint_state = None
         self.planned_trajectory = None
+        self.planned_target_pose = None
+        self.execution_start_transform = None
         self.joint_state_subscription = self.create_subscription(
             JointState, "/joint_states", self.joint_state_callback, 10
         )
@@ -179,6 +181,7 @@ class MotionPlanner(Node):
         if current_transform is None:
             return
         target_pose = self.calculate_target_pose(current_transform, axis, distance)
+        self.planned_target_pose = target_pose
         goal = self.build_planning_goal(target_pose, self.current_joint_state)
         if goal is None:
             return
@@ -314,6 +317,10 @@ class MotionPlanner(Node):
         if not self.execute_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().warning("Trajectory execution server unavailable")
             return False
+
+        self.execution_start_transform = self.get_current_pose()
+        if self.execution_start_transform is None:
+            return False
         execute_goal = ExecuteTrajectory.Goal()
         execute_goal.trajectory = self.planned_trajectory
         self.execute_goal_future = self.execute_client.send_goal_async(execute_goal)
@@ -356,6 +363,35 @@ class MotionPlanner(Node):
             response.message = "Execution request not sent; check node logs"
         return response
 
+    def compare_execution_result(self, actual_transform):
+        start = self.execution_start_transform.transform.translation
+        actual = actual_transform.transform.translation
+        target = self.planned_target_pose.position
+        displacement = (actual.x - start.x, actual.y - start.y, actual.z - start.z)
+        position_error = math.dist(
+            (actual.x, actual.y, actual.z), (target.x, target.y, target.z)
+        )
+
+        qa = actual_transform.transform.rotation
+        qt = self.planned_target_pose.orientation
+        a = (qa.x, qa.y, qa.z, qa.w)
+        t = (qt.x, qt.y, qt.z, qt.w)
+        norm_a = math.sqrt(sum(v * v for v in a))
+        norm_t = math.sqrt(sum(v * v for v in t))
+        if norm_a == 0.0 or norm_t == 0.0:
+            self.get_logger().warning('Invalid quaternion')
+            return
+        dot = abs(sum(av * tv for av, tv in zip(a, t)))
+        cosine = min(1.0, max(0.0, dot / (norm_a * norm_t)))
+        angle_error = 2.0 * math.acos(cosine)
+
+        self.get_logger().info(
+            f'Actual displacement (m): {displacement}'
+        )
+        self.get_logger().info(
+            f'Position error={position_error:.6f} m, '
+            f'orientation error={angle_error:.6f} rad'
+        )
 
 def main(args=None):
     rclpy.init(args=args)
