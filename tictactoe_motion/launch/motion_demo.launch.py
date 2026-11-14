@@ -31,7 +31,7 @@ def generate_launch_description():
 
     planner_node = Node(
         package='tictactoe_motion',
-        executable='motion_planner',
+        executable='motion_demo',
         output='screen',
         parameters=[{
             'axis': LaunchConfiguration('axis'),

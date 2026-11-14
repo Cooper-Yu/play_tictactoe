@@ -10,7 +10,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/planning_demo.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/motion_demo.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,7 +25,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'motion_planner = tictactoe_motion.motion_planner:main',
+            'motion_demo = tictactoe_motion.motion_demo:main',
         ],
     },
 )
