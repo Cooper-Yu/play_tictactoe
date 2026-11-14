@@ -13,6 +13,7 @@ from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 import math
 from std_srvs.srv import Trigger
+import time
 
 
 class MotionPlanner(Node):
@@ -43,9 +44,16 @@ class MotionPlanner(Node):
         self.declare_parameter("distance", 0.0)
         self.declare_parameter("velocity_scaling", 0.1)
         self.declare_parameter("acceleration_scaling", 0.1)
+        self.joint_state_sequence = 0
+
+        self.settle_timer = None
+        self.last_settle_sequence = 0
+        self.previous_settle_positions = None
+        self.stable_sample_count = 0
 
     def joint_state_callback(self, msg):
         self.current_joint_state = msg
+        self.joint_state_sequence += 1
 
     def get_current_pose(self):
         try:
@@ -354,6 +362,7 @@ class MotionPlanner(Node):
             )
             return
         self.get_logger().info("Execution succeeded")
+        self.start_settle_check()
 
     def execution_trigger_callback(self, request, response):
         response.success = self.execute_planned_trajectory()
@@ -379,19 +388,82 @@ class MotionPlanner(Node):
         norm_a = math.sqrt(sum(v * v for v in a))
         norm_t = math.sqrt(sum(v * v for v in t))
         if norm_a == 0.0 or norm_t == 0.0:
-            self.get_logger().warning('Invalid quaternion')
+            self.get_logger().warning("Invalid quaternion")
             return
         dot = abs(sum(av * tv for av, tv in zip(a, t)))
         cosine = min(1.0, max(0.0, dot / (norm_a * norm_t)))
         angle_error = 2.0 * math.acos(cosine)
 
+        self.get_logger().info(f"Actual displacement (m): {displacement}")
         self.get_logger().info(
-            f'Actual displacement (m): {displacement}'
+            f"Position error={position_error:.6f} m, "
+            f"orientation error={angle_error:.6f} rad"
         )
-        self.get_logger().info(
-            f'Position error={position_error:.6f} m, '
-            f'orientation error={angle_error:.6f} rad'
+
+    def start_settle_check(self):
+        self.last_settle_sequence = self.joint_state_sequence
+        self.previous_settle_positions = None
+        self.stable_sample_count = 0
+        self.settle_deadline = time.monotonic() + 5.0
+        self.settle_timer = self.create_timer(0.1, self.check_settled_state)
+
+    def check_settled_state(self):
+        if time.monotonic() >= self.settle_deadline:
+            self.settle_timer.cancel()
+            self.get_logger().warning("Timed out waiting for settled state")
+            return
+        if self.joint_state_sequence == self.last_settle_sequence:
+            return
+
+        self.last_settle_sequence = self.joint_state_sequence
+
+        current_positions = dict(
+            zip(self.current_joint_state.name, self.current_joint_state.position)
         )
+
+        required_joints = [f"joint{i}" for i in range(1, 7)]
+        if any(name not in current_positions for name in required_joints):
+            self.previous_settle_positions = None
+            self.stable_sample_count = 0
+            return
+
+        positions = [current_positions[name] for name in required_joints]
+
+        if self.previous_settle_positions is None:
+            self.previous_settle_positions = positions
+            return
+
+        max_change = max(
+            abs(current - previous)
+            for current, previous in zip(positions, self.previous_settle_positions)
+        )
+        self.previous_settle_positions = positions
+
+        if max_change <= 0.0001:
+            self.stable_sample_count += 1
+        else:
+            self.stable_sample_count = 0
+
+        if self.stable_sample_count < 3:
+            return
+
+        if self.stable_sample_count == 3:
+            self.settled_joint_stamp = self.current_joint_state.header.stamp
+
+        actual_transform = self.get_current_pose()
+        if actual_transform is None:
+            return
+
+        tf_time = Time.from_msg(actual_transform.header.stamp).nanoseconds
+        stable_time = Time.from_msg(self.settled_joint_stamp).nanoseconds
+
+        if tf_time < stable_time:
+            return
+
+        self.settle_timer.cancel()
+        self.get_logger().info('Joint feedback settled; comparing execution result')
+        self.compare_execution_result(actual_transform)
+
 
 def main(args=None):
     rclpy.init(args=args)
