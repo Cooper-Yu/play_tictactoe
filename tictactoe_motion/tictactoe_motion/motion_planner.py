@@ -12,6 +12,7 @@ from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 
+
 class MotionPlanner(Node):
     def __init__(self):
         super().__init__("motion_planner")
@@ -26,6 +27,9 @@ class MotionPlanner(Node):
         self.move_client = ActionClient(self, MoveGroup, "/move_action")
 
         self.demo_timer = self.create_timer(3.0, self.run_planning_demo)
+
+        self.declare_parameter("axis", "x")
+        self.declare_parameter("distance", 0.0)
 
     def joint_state_callback(self, msg):
         self.current_joint_state = msg
@@ -175,68 +179,78 @@ class MotionPlanner(Node):
         status = response.status
         result = response.result
 
-        if status == GoalStatus.STATUS_SUCCEEDED and result.error_code.val == MoveItErrorCodes.SUCCESS:
-            self.get_logger().info('Planning succeeded')
+        if (
+            status == GoalStatus.STATUS_SUCCEEDED
+            and result.error_code.val == MoveItErrorCodes.SUCCESS
+        ):
+            self.get_logger().info("Planning succeeded")
             self.planned_trajectory = result.planned_trajectory
             joint_trajectory = self.planned_trajectory.joint_trajectory
 
             if not joint_trajectory.points:
-                self.get_logger().warning('Planned trajectory is empty')
+                self.get_logger().warning("Planned trajectory is empty")
                 self.planned_trajectory = None
                 return
 
             self.get_logger().info(
-                f'Planned joints: {list(joint_trajectory.joint_names)}, '
-                f'trajectory points: {len(joint_trajectory.points)}'
+                f"Planned joints: {list(joint_trajectory.joint_names)}, "
+                f"trajectory points: {len(joint_trajectory.points)}"
             )
 
             start_positions = joint_trajectory.points[0].positions
             end_positions = joint_trajectory.points[-1].positions
 
             for name, start, end in zip(
-                joint_trajectory.joint_names,
-                start_positions,
-                end_positions
+                joint_trajectory.joint_names, start_positions, end_positions
             ):
                 self.get_logger().info(
-                    f'{name}: start={start:.6f}, end={end:.6f}, '
-                    f'delta={end - start:.6f} rad'
+                    f"{name}: start={start:.6f}, end={end:.6f}, "
+                    f"delta={end - start:.6f} rad"
                 )
             for index, point in enumerate(joint_trajectory.points):
-                point_summary = ', '.join(
-                    f'{name}={position:.6f}'
+                point_summary = ", ".join(
+                    f"{name}={position:.6f}"
                     for name, position in zip(
-                        joint_trajectory.joint_names,
-                        point.positions
+                        joint_trajectory.joint_names, point.positions
                     )
                 )
                 time_seconds = (
                     point.time_from_start.sec
                     + point.time_from_start.nanosec / 1_000_000_000
                 )
-                self.get_logger().info(f'Point {index}: t={time_seconds:.6f}s, {point_summary}')
+                self.get_logger().info(
+                    f"Point {index}: t={time_seconds:.6f}s, {point_summary}"
+                )
             for joint_index, name in enumerate(joint_trajectory.joint_names):
                 positions = [
-                    point.positions[joint_index]
-                    for point in joint_trajectory.points
+                    point.positions[joint_index] for point in joint_trajectory.points
                 ]
                 max_step = max(
                     (
                         abs(current - previous)
                         for previous, current in zip(positions, positions[1:])
                     ),
-                    default=0.0
+                    default=0.0,
                 )
-                self.get_logger().info(f'{name}: max adjacent change={max_step:.6f} rad')
+                self.get_logger().info(
+                    f"{name}: max adjacent change={max_step:.6f} rad"
+                )
 
         else:
             self.get_logger().warning(
-                f'Planning failed: status={status}, '
-                f'MoveIt error code={result.error_code.val}'
+                f"Planning failed: status={status}, "
+                f"MoveIt error code={result.error_code.val}"
             )
+
     def run_planning_demo(self):
         self.demo_timer.cancel()
-        self.request_plan('x', 0.001)
+        axis = self.get_parameter("axis").value
+        distance = self.get_parameter("distance").value
+        if distance == 0.0:
+            self.get_logger().info("Distance is zero, skipping planning")
+            return
+        self.request_plan(axis, distance)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -248,6 +262,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
