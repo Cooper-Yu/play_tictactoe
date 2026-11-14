@@ -11,7 +11,7 @@ from moveit_msgs.msg import PositionConstraint, OrientationConstraint, Constrain
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
-
+import math
 
 class MotionPlanner(Node):
     def __init__(self):
@@ -246,6 +246,12 @@ class MotionPlanner(Node):
         self.demo_timer.cancel()
         axis = self.get_parameter("axis").value
         distance = self.get_parameter("distance").value
+        if axis not in ('x', 'y', 'z'):
+            self.get_logger().warning("Invalid axis: expected 'x', 'y', or 'z'")
+            return
+        if not math.isfinite(distance):
+            self.get_logger().warning('Distance must be finite')
+            return
         if distance == 0.0:
             self.get_logger().info("Distance is zero, skipping planning")
             return
