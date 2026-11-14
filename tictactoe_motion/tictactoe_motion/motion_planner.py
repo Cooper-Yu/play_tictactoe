@@ -36,7 +36,29 @@ class MotionPlanner(Node):
             return None
 
     def calculate_target_pose(self, current_transform, axis, distance):
-        pass
+        target_pose = Pose()
+        translation = current_transform.transform.translation
+
+        target_pose.position.x = translation.x
+        target_pose.position.y = translation.y
+        target_pose.position.z = translation.z
+
+        rotation = current_transform.transform.rotation
+
+        target_pose.orientation.x = rotation.x
+        target_pose.orientation.y = rotation.y
+        target_pose.orientation.z = rotation.z
+        target_pose.orientation.w = rotation.w
+
+        if axis == 'x':
+            target_pose.position.x = target_pose.position.x + distance
+        elif axis == 'y':
+            target_pose.position.y = target_pose.position.y + distance
+        elif axis == 'z':
+            target_pose.position.z = target_pose.position.z + distance
+        else:
+            raise ValueError("axis must be 'x', 'y', 'z'")
+        return target_pose
 
     def report_current_state(self):
         if self.current_joint_state is None:
