@@ -210,7 +210,11 @@ class MotionPlanner(Node):
                         point.positions
                     )
                 )
-                self.get_logger().info(f'Point {index}: {point_summary}')
+                time_seconds = (
+                    point.time_from_start.sec
+                    + point.time_from_start.nanosec / 1_000_000_000
+                )
+                self.get_logger().info(f'Point {index}: t={time_seconds:.6f}s, {point_summary}')
             for joint_index, name in enumerate(joint_trajectory.joint_names):
                 positions = [
                     point.positions[joint_index]
