@@ -30,6 +30,8 @@ class MotionPlanner(Node):
 
         self.declare_parameter("axis", "x")
         self.declare_parameter("distance", 0.0)
+        self.declare_parameter('velocity_scaling', 0.1)
+        self.declare_parameter('acceleration_scaling', 0.1)
 
     def joint_state_callback(self, msg):
         self.current_joint_state = msg
@@ -107,10 +109,20 @@ class MotionPlanner(Node):
     def build_planning_goal(self, target_pose, current_joint_state):
         goal = MoveGroup.Goal()
 
+        velocity_scaling = self.get_parameter('velocity_scaling').value
+        acceleration_scaling = self.get_parameter('acceleration_scaling').value
+        if not 0.0 < velocity_scaling <= 1.0:
+            self.get_logger().warning('velocity_scaling must be in (0, 1]')
+            return None
+        if not 0.0 < acceleration_scaling <= 1.0:
+            self.get_logger().warning('acceleration_scaling must be in (0, 1]')
+            return None
+
         goal.request.group_name = "arm"
         goal.request.allowed_planning_time = 5.0
-        goal.request.max_velocity_scaling_factor = 0.1
-        goal.request.max_acceleration_scaling_factor = 0.1
+        goal.request.max_velocity_scaling_factor = velocity_scaling
+        goal.request.max_acceleration_scaling_factor = acceleration_scaling
+        goal.request.num_planning_attempts = 1
 
         goal.request.start_state.joint_state = current_joint_state
         goal.request.start_state.is_diff = True
@@ -159,6 +171,8 @@ class MotionPlanner(Node):
             return
         target_pose = self.calculate_target_pose(current_transform, axis, distance)
         goal = self.build_planning_goal(target_pose, self.current_joint_state)
+        if goal is None:
+            return
         if not self.move_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().warning("MoveIt action server unavailable")
             return
