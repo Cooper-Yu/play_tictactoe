@@ -12,6 +12,7 @@ from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 import math
+from std_srvs.srv import Trigger
 
 
 class MotionPlanner(Node):
@@ -29,6 +30,9 @@ class MotionPlanner(Node):
         self.move_client = ActionClient(self, MoveGroup, "/move_action")
         self.execute_client = ActionClient(
             self, ExecuteTrajectory, "/execute_trajectory"
+        )
+        self.execution_service = self.create_service(
+            Trigger, "/execute_planned_trajectory", self.execution_trigger_callback
         )
 
         self.demo_timer = self.create_timer(3.0, self.run_planning_demo)
@@ -279,45 +283,79 @@ class MotionPlanner(Node):
     def execute_planned_trajectory(self):
         if self.planned_trajectory is None:
             self.get_logger().warning("No planned trajectory to execute")
-            return
+            return False
+
+        if self.current_joint_state is None:
+            self.get_logger().warning("Cannot execute: joint states unavailable")
+            return False
+
+        joint_trajectory = self.planned_trajectory.joint_trajectory
+        if not joint_trajectory.points:
+            self.get_logger().warning("Cannot execute: trajectory is empty")
+            return False
+
+        current_positions = dict(
+            zip(self.current_joint_state.name, self.current_joint_state.position)
+        )
+        start_positions = joint_trajectory.points[0].positions
+
+        for name, planned_start in zip(joint_trajectory.joint_names, start_positions):
+            if name not in current_positions:
+                self.get_logger().warning(f"Missing joint state: {name}")
+                return False
+            start_error = abs(current_positions[name] - planned_start)
+            if start_error > 0.01:
+                self.get_logger().warning(
+                    f"Joint {name} moved since planning: "
+                    f"error={start_error:.6f} rad; replan required"
+                )
+                return False
+
         if not self.execute_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().warning("Trajectory execution server unavailable")
-            return
+            return False
         execute_goal = ExecuteTrajectory.Goal()
         execute_goal.trajectory = self.planned_trajectory
         self.execute_goal_future = self.execute_client.send_goal_async(execute_goal)
         self.execute_goal_future.add_done_callback(
             self.execution_goal_response_callback
         )
+        return True
 
     def execution_goal_response_callback(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
-            self.get_logger().warning('Execution goal rejected')
+            self.get_logger().warning("Execution goal rejected")
             return
-        self.get_logger().info('Execution goal accepted')
+        self.get_logger().info("Execution goal accepted")
         self.execute_result_future = goal_handle.get_result_async()
-        self.execute_result_future.add_done_callback(
-            self.execution_result_callback
-        )
+        self.execute_result_future.add_done_callback(self.execution_result_callback)
 
     def execution_result_callback(self, future):
         response = future.result()
         status = response.status
         result = response.result
         if status == GoalStatus.STATUS_CANCELED:
-            self.get_logger().info('Execution canceled')
+            self.get_logger().info("Execution canceled")
             return
         if (
             status != GoalStatus.STATUS_SUCCEEDED
             or result.error_code.val != MoveItErrorCodes.SUCCESS
         ):
             self.get_logger().warning(
-                f'Execution failed: status={status}, '
-                f'error={result.error_code.val}'
+                f"Execution failed: status={status}, error={result.error_code.val}"
             )
             return
-        self.get_logger().info('Execution succeeded')
+        self.get_logger().info("Execution succeeded")
+
+    def execution_trigger_callback(self, request, response):
+        response.success = self.execute_planned_trajectory()
+        if response.success:
+            response.message = "Execution requested; final result pending"
+        else:
+            response.message = "Execution request not sent; check node logs"
+        return response
+
 
 def main(args=None):
     rclpy.init(args=args)
