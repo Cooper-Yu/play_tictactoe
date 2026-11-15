@@ -70,6 +70,8 @@ class SimulationHarness:
         assert self.recording.recorder.poses_file.resolve().is_relative_to(self.output)
         self.until(lambda: self.node.feedback_is_fresh() and self.node.tf_buffer.can_transform(
             'base_link', 'link6', rclpy.time.Time()), 45)
+        self.until(lambda: {'gazebo', 'move_group'}.issubset(
+            {name for name, _ in self.client.get_node_names_and_namespaces()}), 15)
         names = {name for name, _ in self.client.get_node_names_and_namespaces()}
         assert 'gazebo' in names and 'move_group' in names, names
         assert not any('zenoh' in n or 'piper_ctrl' in n for n in names), names
