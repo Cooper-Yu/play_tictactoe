@@ -6,6 +6,7 @@ from moveit_msgs.msg import MoveItErrorCodes
 import time
 from rclpy.time import Time
 import math
+from tictactoe_motion.motion_stop import MotionStop
 
 
 class TrajectoryExecutor:
@@ -20,6 +21,9 @@ class TrajectoryExecutor:
         self.node = node
         self.settings = node.settings
         self.is_executing = False
+        self.execution_goal_handle = None
+        self.execution_goal_pending = False
+        self.execution_terminal = True
         self.last_comparison = None
         self.target_joint_positions = None
         self.target_record_name = None
@@ -27,62 +31,64 @@ class TrajectoryExecutor:
         self.execute_client = ActionClient(
             self.node, ExecuteTrajectory, self.settings["execute_action_name"]
         )
+        self.stop = MotionStop(node, self)
 
     def execution_goal_response_callback(self, future):
         try:
             goal_handle = future.result()
         except Exception as error:
-            self.node.get_logger().error(
-                f"Failed to receive execution goal response: {error}; "
-                "execution remains blocked"
-            )
+            self.stop.fail(f"Failed to receive execution goal response: {error}")
             return
+        self.execution_goal_pending = False
         if not goal_handle.accepted:
+            self.execution_terminal = True
+            if self.stop.active:
+                self.stop.terminal_received(GoalStatus.STATUS_ABORTED)
+                return
             self.is_executing = False
             self.node.get_logger().warning("Execution goal rejected")
             return
 
+        self.execution_goal_handle = goal_handle
         self.node.get_logger().info("Execution goal accepted")
         try:
             self.execute_result_future = goal_handle.get_result_async()
             self.execute_result_future.add_done_callback(
                 self.execution_result_callback
             )
+            self.stop.cancel_available_goal()
         except Exception as error:
-            self.node.get_logger().error(
-                f"Failed to request execution result: {error}; "
-                "execution remains blocked"
-            )
+            self.stop.fail(f"Failed to request execution result: {error}")
             return
 
     def execution_result_callback(self, future):
         try:
             response = future.result()
         except Exception as error:
-            self.node.get_logger().error(
-                f"Failed to receive execution result: {error}; "
-                "execution remains blocked"
-            )
+            self.stop.fail(f"Failed to receive execution result: {error}")
             return
         status = response.status
         result = response.result
-        if status == GoalStatus.STATUS_CANCELED:
-            self.is_executing = False
-            self.node.get_logger().info("Execution canceled")
-            return
-        if (
-            status != GoalStatus.STATUS_SUCCEEDED
-            or result.error_code.val != MoveItErrorCodes.SUCCESS
+        if status not in (
+            GoalStatus.STATUS_SUCCEEDED, GoalStatus.STATUS_CANCELED, GoalStatus.STATUS_ABORTED,
         ):
-            self.is_executing = False
-            self.node.get_logger().warning(
-                f"Execution failed: status={status}, error={result.error_code.val}"
+            self.stop.fail(f"Unexpected execution result status: {status}")
+            return
+        self.execution_terminal = True
+        if (self.stop.active or status != GoalStatus.STATUS_SUCCEEDED
+                or result.error_code.val != MoveItErrorCodes.SUCCESS):
+            self.node.get_logger().info(
+                f"Execution ended: status={status}, error={result.error_code.val}"
             )
+            self.stop.terminal_received(status)
             return
         self.node.get_logger().info("Execution succeeded")
         self.start_settle_check()
 
     def start_settle_check(self):
+        previous_timer = getattr(self, 'settle_timer', None)
+        if previous_timer is not None:
+            self.node.destroy_timer(previous_timer)
         self.last_settle_sequence = self.node.joint_state_sequence
         self.previous_settle_positions = None
         self.stable_sample_count = 0
@@ -92,10 +98,7 @@ class TrajectoryExecutor:
     def check_settled_state(self):
         if time.monotonic() >= self.settle_deadline:
             self.settle_timer.cancel()
-            self.node.get_logger().warning(
-                "Timed out waiting for settled state; "
-                "execution remains blocked"
-            )
+            self.stop.fail("Timed out waiting for settled state")
             return
         if self.node.joint_state_sequence == self.last_settle_sequence:
             return
@@ -159,6 +162,8 @@ class TrajectoryExecutor:
             self.node.get_logger().error(f"Execution verification failed: {error}")
         finally:
             self.is_executing = False
+            self.execution_goal_handle = None
+        self.stop.publish("idle", "Execution finished; final state checked")
         callback = getattr(self, "on_verification", None)
         if callback is not None:
             callback(self.target_record_name, self.last_comparison)
@@ -294,13 +299,16 @@ class TrajectoryExecutor:
         execute_goal = ExecuteTrajectory.Goal()
         execute_goal.trajectory = self.planned_trajectory
         self.is_executing = True
+        self.execution_goal_handle = None
+        self.execution_goal_pending = True
+        self.execution_terminal = False
+        self.stop.publish('executing', 'Trajectory execution requested')
         try:
             self.execute_goal_future = self.execute_client.send_goal_async(execute_goal)
             self.execute_goal_future.add_done_callback(
                 self.execution_goal_response_callback
             )
         except Exception as error:
-            self.is_executing = False
-            self.node.get_logger().error(f"Failed to send execution request: {error}")
+            self.stop.fail(f"Failed to send execution request: {error}")
             return False
         return True

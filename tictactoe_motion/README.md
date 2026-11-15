@@ -77,8 +77,8 @@ The final comparison is published on `/pose_recording/status`.
 
 Planning, execution and capture are mutually exclusive. Lost/uncertain execution
 responses or settling timeout keep motion blocked; cancellation of capture does
-not cancel arm motion. Active arm-stop/cancel controls and Web GUI integration
-are separate follow-up work. This demo does not certify collision-free contact
+not cancel arm motion. Software stop/cancel controls are provided below; Web GUI integration
+is separate follow-up work. This demo does not certify collision-free contact
 or compensate for the missing board/table collision scene.
 
 ## Checks
@@ -155,3 +155,58 @@ The launch check starts/stops temporary processes, reads parameter services, and
 publishes synthetic RGB frames. It selects the system OpenCV with
 `PYTHONNOUSERSITE=1` and Qt offscreen mode to avoid opening desktop windows.
 It does not validate real camera transport, robot execution or interactive GUI use.
+
+
+## Active software stop
+
+```bash
+ros2 service call /stop_motion std_srvs/srv/Trigger '{}'
+ros2 topic echo /motion/status
+```
+
+The Trigger response acknowledges the stop request. Wait for `state: stopped`
+in the JSON status; `cancel_accepted` is not proof that the arm has stopped.
+`stop_blocked` means the system cannot confirm stopping and keeps planning,
+execution and pose capture blocked. A repeated request is idempotent while a
+stop is pending. After a blocked timeout, an explicit stop request can retry
+confirmation; only a terminal execution result plus fresh stable feedback can
+release the block. There is no force-unlock service.
+
+The stop entry cancels pose capture, invalidates pending plans, cancels a known
+plan-only goal, and discards late planning responses. During execution it sends
+both the goal-specific cancel request and a non-latched `stop` event to
+`stop_event_topic` (default `/trajectory_execution_event`). It also handles a
+stop received before the execution goal is accepted. This compatibility route
+is necessary in the locally tested Humble MoveIt 2.5.9 environment: action-only
+cancellation did not interrupt an eight-second test trajectory. The MoveIt
+[execution manager stop-event implementation](https://moveit.picknik.ai/humble/api/html/moveit__ros_2planning_2trajectory__execution__manager_2src_2trajectory__execution__manager_8cpp_source.html)
+processes the `stop` event by stopping trajectory execution.
+
+The event stops executions managed by the configured MoveIt instance; it is not
+restricted to one action UUID. Use this demo as the sole motion caller for that
+MoveIt instance, including avoiding concurrent RViz execution. No stop event is
+sent when the demo has no active accepted execution handle. It does not stop
+independent driver commands or other MoveIt instances and does not replace a
+hardware emergency stop. Hardware operation has not been validated here.
+
+The timeout uses a steady clock and remains active even if simulated `/clock`
+pauses. `stop_timeout` defaults to five seconds. Settling uses `settle_period`,
+`settle_samples`, `settle_joint_tolerance` and `feedback_max_age` from common.yaml.
+Samples must have distinct increasing timestamps, valid joint1..joint6 values,
+and fresh reception times. Cancel rejection or missing responses never by
+themselves release the block. Interrupted execution is not compared with the
+original endpoint as a successful move. After stopping, an explicit new plan
+and execution request are required; the canceled trajectory cannot resume.
+
+Validated locally on 2026-11-15: 19 stop tests, 7 configuration tests, 17 recording
+tests and 5 perception tests passed. An intermediate repeated-node test hit a
+native rclpy segmentation fault. Explicit action-client, TF-listener and stop-timer
+cleanup was added before node/context destruction. The complete 48-test suite
+then passed in one process with aggressive Python garbage collection enabled;
+this bounded check does not establish the full native failure mechanism.
+
+Gazebo validation: an eight-second X+1cm trajectory was stopped after actual
+progress exceeded 2mm, MoveIt returned ABORTED/PREEMPTED, joint feedback settled,
+and replay of the old trajectory was rejected. An explicitly replanned return
+to the saved starting joint configuration passed joint and pose checks.
+The first action-only attempt and its recovery are retained in validation records.

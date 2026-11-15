@@ -27,6 +27,8 @@ class MotionPlanner(Node):
         self.planned_target_joints = None
         self.planned_record_name = None
         self.is_planning = False
+        self.plan_generation = 0
+        self.plan_goal_handle = None
         self.is_recording = False
         self.last_joint_state_received = None
         self.joint_state_subscription = self.create_subscription(
@@ -43,6 +45,23 @@ class MotionPlanner(Node):
         self.declare_parameter("velocity_scaling", 0.1)
         self.declare_parameter("acceleration_scaling", 0.1)
         self.joint_state_sequence = 0
+
+    def destroy_node(self):
+        """! @brief Release action waitables before destroying their ROS node/context."""
+        recording = getattr(self, 'pose_recording_demo', None)
+        if recording is not None:
+            recording.close()
+        execution = getattr(self, 'trajectory_executor', None)
+        if execution is not None:
+            execution.stop.close()
+            execution.execute_client.destroy()
+        client = getattr(self, 'move_client', None)
+        if client is not None:
+            client.destroy()
+        listener = getattr(self, 'tf_listener', None)
+        if listener is not None:
+            listener.unregister()
+        return super().destroy_node()
 
     def joint_state_callback(self, msg):
         self.current_joint_state = msg
@@ -61,10 +80,23 @@ class MotionPlanner(Node):
 
     def invalidate_plan(self):
         """! @brief Remove a pending trajectory and its target metadata."""
+        self.plan_generation += 1
         self.planned_trajectory = None
         self.planned_target_pose = None
         self.planned_target_joints = None
         self.planned_record_name = None
+
+    def cancel_planning(self):
+        """! @brief Discard pending plans and cancel this client's known plan-only goal."""
+        self.invalidate_plan()
+        self.is_planning = False
+        handle = self.plan_goal_handle
+        self.plan_goal_handle = None
+        if handle is not None:
+            try:
+                handle.cancel_goal_async()
+            except Exception as error:
+                self.get_logger().warning(f"Plan cancellation unavailable; result discarded: {error}")
 
     def get_current_pose(self):
         try:
@@ -194,7 +226,10 @@ class MotionPlanner(Node):
         self.is_planning = True
         try:
             self.send_goal_future = self.move_client.send_goal_async(goal)
-            self.send_goal_future.add_done_callback(self.goal_response_callback)
+            generation = self.plan_generation
+            self.send_goal_future.add_done_callback(
+                lambda future: self.goal_response_callback(future, generation)
+            )
         except Exception as error:
             self.is_planning = False
             self.invalidate_plan()
@@ -216,10 +251,7 @@ class MotionPlanner(Node):
             )
             return False
 
-        self.planned_trajectory = None
-        self.planned_target_pose = None
-        self.planned_target_joints = None
-        self.planned_record_name = None
+        self.invalidate_plan()
         if self.current_joint_state is None:
             self.get_logger().warning("Cannot plan: joint states unavailable")
             return False
@@ -238,14 +270,27 @@ class MotionPlanner(Node):
         self.is_planning = True
         try:
             self.send_goal_future = self.move_client.send_goal_async(goal)
-            self.send_goal_future.add_done_callback(self.goal_response_callback)
+            generation = self.plan_generation
+            self.send_goal_future.add_done_callback(
+                lambda future: self.goal_response_callback(future, generation)
+            )
         except Exception as error:
             self.is_planning = False
             self.get_logger().error(f"Failed to send planning request: {error}")
             return False
         return True
 
-    def goal_response_callback(self, future):
+    def goal_response_callback(self, future, generation=None):
+        if generation is None:
+            generation = self.plan_generation
+        if generation != self.plan_generation:
+            try:
+                handle = future.result()
+                if handle.accepted:
+                    handle.cancel_goal_async()
+            except Exception as error:
+                self.get_logger().warning(f"Discarded plan response: {error}")
+            return
         try:
             goal_handle = future.result()
         except Exception as error:
@@ -258,16 +303,22 @@ class MotionPlanner(Node):
             self.is_planning = False
             self.get_logger().warning("Planning goal rejected")
             return
+        self.plan_goal_handle = goal_handle
         self.get_logger().info("Planning goal accepted")
         try:
             self.result_future = goal_handle.get_result_async()
-            self.result_future.add_done_callback(self.planning_result_callback)
+            self.result_future.add_done_callback(
+                lambda result: self.planning_result_callback(result, generation)
+            )
         except Exception as error:
             self.is_planning = False
             self.get_logger().error(f"Failed to request planning result: {error}")
             return
 
-    def planning_result_callback(self, future):
+    def planning_result_callback(self, future, generation=None):
+        if generation is not None and generation != self.plan_generation:
+            return
+        self.plan_goal_handle = None
         self.is_planning = False
         try:
             response = future.result()

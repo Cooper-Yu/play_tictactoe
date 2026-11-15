@@ -27,6 +27,7 @@ class PoseRecordingDemo:
 
     def __init__(self, node):
         self.node = node
+        node.pose_recording_demo = self
         self.settings = node.settings
         node.declare_parameter("environment", "real", ParameterDescriptor(read_only=True))
         self.environment = node.get_parameter("environment").value
