@@ -205,3 +205,36 @@ The real launch and conservative common/sim defaults stay unchanged. Add
 `--test-stop` to the acceptance script to verify an explicit mid-line software
 stop, fresh settled feedback, rejection of the old plan, and a newly planned
 return to zero. The profile is optional; timing is not a hardware speed claim.
+
+### Parameterized drawing actions and explicit-turn TicTacToe
+
+`drawing_actions.py` contains `DrawingActions`. It receives a board canvas and an
+existing motion driver; it does not create another node or own robot feedback.
+Positions are normalized board-local `(u,v)` centers; dimensions are meters.
+
+```python
+actions = DrawingActions(canvas, driver, upper_z=0.22, depth=0.01)
+actions.draw_grid(center=(0.5, 0.5), width=0.06, height=0.06)
+actions.draw_x(center=(0.4, 0.4), size=0.012)
+actions.draw_o(center=(0.6, 0.4), radius=0.005)
+```
+
+`size` is the X bounding-square edge, not the diagonal length. `grid_strokes`,
+`x_strokes` and `o_strokes` produce validated preview geometry without motion.
+Execution still requires explicit draw calls, planning, execution and settling.
+The driver/geometry adapter, board calibration, actual tool TCP and verified
+hardware-specific parameters are still required for a real-robot migration.
+The supplied canvas/renderer and acceptance scripts remain simulation-only.
+
+`tic_tac_toe.py` separately contains `TicTacToe`: explicit alternating X/O inputs,
+occupied-cell rejection, win/draw detection and cell placement derived from the
+selected grid center/width/height. A mark is committed only after verified drawing.
+Failure blocks the game because a partial physical/virtual mark may exist; clear
+with the existing Reset mechanism before constructing and starting a new game.
+This does not yet implement YOLO human-move observation or an AI opponent.
+
+`test/verify_tictactoe_game.py` executes a 60x60 mm grid and five explicit moves
+until X wins, captures the displayed board, triggers virtual Reset and returns
+to zero. Use the common, sim and optional board_demo_sim parameter files as in
+the canvas acceptance. This is the motion/game foundation for the future small
+Web canvas, not a completed GUI.
