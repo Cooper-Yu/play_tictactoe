@@ -97,3 +97,31 @@ def test_zero_nonfinite_and_fixed_height(planner):
     assert not n.is_planning
     b.position.x=1.0;b.position.z=0.0
     assert polyline_error((.5,.1,0.),[a,b]) == pytest.approx(.1)
+
+
+def test_closed_path_collapsed_to_start_is_not_accepted(planner):
+    from geometry_msgs.msg import PoseStamped
+    from tictactoe_motion.drawing_paths import circle_path
+    n,c=planner
+    start=c.start_pose()
+    assert c.request_path(circle_path(start,.01))
+    fake=trajectory()
+    fake.joint_trajectory.points[-1].positions=[0.0]*6
+    response=Future()
+    response.set_result(SimpleNamespace(error_code=SimpleNamespace(val=1),fraction=1.,solution=fake))
+    fk=Future();fk.set_result(SimpleNamespace(error_code=SimpleNamespace(val=1),pose_stamped=[PoseStamped(pose=start)]))
+    c.fk_client.call_async=Mock(return_value=fk)
+    c.path_ready(response,n.plan_generation)
+    assert n.planned_trajectory is None
+    assert 'coverage gap' in c.last_report['reason']
+
+
+def test_interpolation_matches_endpoint_derivative_order():
+    from tictactoe_motion.cartesian_planner import interpolate_joint_segment
+    t=trajectory();a,b=t.joint_trajectory.points
+    a.velocities=[];b.velocities=[];a.accelerations=[];b.accelerations=[]
+    assert interpolate_joint_segment(a,b,.25)==pytest.approx([.0025]*6)
+    a.velocities=[0.]*6;b.velocities=[0.]*6
+    assert interpolate_joint_segment(a,b,.25)==pytest.approx([.0015625]*6)
+    a.accelerations=[0.]*6;b.accelerations=[0.]*6
+    assert interpolate_joint_segment(a,b,.25)==pytest.approx([.00103515625]*6)

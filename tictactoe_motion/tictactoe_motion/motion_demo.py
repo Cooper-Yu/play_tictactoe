@@ -2,6 +2,7 @@ import rclpy
 from tictactoe_motion.motion_planner import MotionPlanner
 import math
 from std_srvs.srv import Trigger
+from tictactoe_motion.drawing_paths import cross_path, circle_path
 from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
 
 
@@ -26,6 +27,26 @@ class MotionDemo:
         )
 
         self.xy_service = node.create_service(Trigger, '/plan_xy', self.xy_callback)
+        node.declare_parameter('cross_size', 0.02)
+        node.declare_parameter('circle_radius', 0.01)
+        self.cross_service = node.create_service(Trigger, '/plan_cross', lambda req, res: self.drawing_callback(res, 'cross'))
+        self.circle_service = node.create_service(Trigger, '/plan_circle', lambda req, res: self.drawing_callback(res, 'circle'))
+
+    def drawing_callback(self, response, shape):
+        try:
+            start = self.node.cartesian_planner.start_pose()
+            if shape == 'cross':
+                poses = cross_path(start, self.node.get_parameter('cross_size').value)
+            else:
+                poses = circle_path(start, self.node.get_parameter('circle_radius').value)
+            response.success = self.node.cartesian_planner.request_path(poses)
+        except (ValueError, TypeError) as error:
+            self.node.get_logger().warning(str(error))
+            if not self.node.is_planning and not self.node.is_recording and not self.node.trajectory_executor.is_executing:
+                self.node.invalidate_plan()
+            response.success = False
+        response.message = 'Drawing plan requested; result pending' if response.success else 'Drawing request rejected; check node logs'
+        return response
 
     def xy_callback(self, request, response):
         response.success = self.node.cartesian_planner.request_xy(

@@ -53,6 +53,30 @@ def stretch_timing(trajectory, velocity, acceleration, minimum_duration):
     return result
 
 
+def interpolate_joint_segment(a, b, fraction):
+    """! @brief Sample the controller's linear/cubic/quintic interpolation from derivatives."""
+    dt = (b.time_from_start.sec-a.time_from_start.sec) + (b.time_from_start.nanosec-a.time_from_start.nanosec)*1e-9
+    if dt <= 0:
+        raise ValueError('Non-increasing segment timing')
+    count = len(a.positions)
+    if any(len(v) not in (0, count) for v in (a.velocities, b.velocities, a.accelerations, b.accelerations)):
+        raise ValueError('Invalid derivative dimensions')
+    values = []
+    for i, (q0, q1) in enumerate(zip(a.positions, b.positions)):
+        s = fraction
+        if not a.velocities or not b.velocities:
+            values.append(q0+(q1-q0)*s)
+            continue
+        v0, v1 = a.velocities[i]*dt, b.velocities[i]*dt
+        if not a.accelerations or not b.accelerations:
+            values.append((2*s**3-3*s**2+1)*q0+(s**3-2*s**2+s)*v0+(-2*s**3+3*s**2)*q1+(s**3-s**2)*v1)
+            continue
+        a0, a1 = a.accelerations[i]*dt**2, b.accelerations[i]*dt**2
+        d0, d1, d2 = q1-q0-v0-a0/2, v1-v0-a0, a1-a0
+        c3, c4, c5 = 10*d0-4*d1+d2/2, -15*d0+7*d1-d2, 6*d0-3*d1+d2/2
+        values.append(q0+v0*s+a0*s*s/2+c3*s**3+c4*s**4+c5*s**5)
+    return values
+
 class CartesianPlanner:
     """! @brief Plan only; reject partial, discontinuous or geometrically distorted paths.
 
@@ -202,14 +226,16 @@ class CartesianPlanner:
                     if any(abs(v-first[n]) > self.settings['execution_start_tolerance'] for n, v in zip(jt.joint_names, row)):
                         raise ValueError('Cartesian start differs from captured joints')
                 else:
-                    if max(abs(a-b) for a, b in zip(row, previous)) > self.settings['cartesian_joint_jump']:
+                    if max(abs(a-b) for a, b in zip(row, previous.positions)) > self.settings['cartesian_joint_jump']:
                         raise ValueError('Cartesian joint jump exceeds limit')
-                    self.checks.append([(a+b)/2 for a, b in zip(previous, row)])
+                    for fraction in (.25, .5, .75):
+                        self.checks.append(interpolate_joint_segment(previous, point, fraction))
                 self.checks.append(row)
-                previous = row
+                previous = point
             self.candidate = stretch_timing(trajectory, self.velocity, self.acceleration,
                                             self.length/self.settings['cartesian_speed'])
             self.index, self.max_error, self.max_angle = 0, 0.0, 0.0
+            self.fk_poses = []
             self.request_fk(generation)
         except Exception as error:
             self.fail(str(error))
@@ -233,6 +259,7 @@ class CartesianPlanner:
             if result.error_code.val != 1 or not result.pose_stamped:
                 raise ValueError('FK validation failed')
             pose = result.pose_stamped[0].pose
+            self.fk_poses.append(copy.deepcopy(pose))
             distance = polyline_error(xyz(pose), self.poses)
             angle = orientation_error(pose.orientation, self.poses[0].orientation)
             if not math.isfinite(distance) or distance > self.settings['cartesian_path_tolerance'] or angle > self.settings['cartesian_orientation_tolerance']:
@@ -244,12 +271,15 @@ class CartesianPlanner:
                 return
             if math.dist(xyz(pose), xyz(self.poses[-1])) > self.settings['return_position_tolerance']:
                 raise ValueError('Cartesian endpoint error exceeds tolerance')
+            coverage_error = max(polyline_error(xyz(p), self.fk_poses) for p in self.poses)
+            if coverage_error > self.settings['cartesian_path_tolerance']:
+                raise ValueError(f'FK path coverage gap: {coverage_error:.6f} m')
             self.node.planned_trajectory = self.candidate
             self.node.planned_target_pose = copy.deepcopy(self.poses[-1])
             self.node.is_planning = False
             self.last_report = {'accepted': True, 'fk_samples': self.index,
                                 'max_path_error_m': self.max_error, 'max_orientation_error_rad': self.max_angle,
-                                'path_length_m': self.length}
+                                'path_length_m': self.length, 'max_uncovered_waypoint_m': coverage_error}
             self.cancel()
             self.node.get_logger().info('Complete Cartesian trajectory validated; explicit execution required')
         except Exception as error:

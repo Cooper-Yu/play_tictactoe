@@ -18,7 +18,7 @@ ros2 service call /execute_planned_trajectory std_srvs/srv/Trigger '{}'
 `CartesianPlanner` uses the configured MoveIt Cartesian service with collision
 checking. It rejects partial paths, large adjacent joint changes, stale feedback,
 invalid timing and FK deviations from the requested path. FK checks cover returned
-points and their joint-space midpoints; these are sampled checks, not a continuous
+points and intermediate controller-spline samples; these are sampled checks, not a continuous
 path proof. The existing execution start check, settle verification and
 `/stop_motion` remain active. Stopping invalidates late service results.
 
@@ -64,3 +64,38 @@ measured software-rendered cloud session, an on/off comparison of the GUI camera
 update topic measured about 1.1–1.2 Hz with shadows and 4.5–5.7 Hz without them.
 The physics real-time factor remained approximately 0.95–0.97. This improves visual
 feedback but does not make the CPU renderer as smooth as a local GPU.
+
+### Airborne X and O
+
+`/plan_cross` uses `cross_size` (default 0.02 m) for two XY diagonals with an
+explicit same-height transfer between them. `/plan_circle` uses `circle_radius`
+(default 0.01 m), starting on the left rim and returning to that exact pose.
+Both keep link6 Z and orientation fixed and require separate execution:
+
+```bash
+ros2 service call /plan_cross std_srvs/srv/Trigger '{}'
+# After complete-path validation:
+ros2 service call /execute_planned_trajectory std_srvs/srv/Trigger '{}'
+# Return to the recorded baseline before a separate circle test.
+ros2 service call /plan_circle std_srvs/srv/Trigger '{}'
+ros2 service call /execute_planned_trajectory std_srvs/srv/Trigger '{}'
+```
+
+These are airborne gesture demonstrations. The X transfer is visible because
+there is no pen lift in this task. Contact drawing will require separate stroke
+and lift handling.
+
+`drawing_paths.py` only generates poses; the shared `CartesianPlanner` performs
+collision-aware planning, time stretching and geometric validation. Before a
+trajectory becomes executable, FK samples cover quarter points of each controller
+spline segment and check both deviation from the requested path and coverage of
+its waypoints. Coverage matters for a closed O: returning to its start alone is
+not evidence of traversing a circle. Linear/cubic/quintic interpolation follows
+provided trajectory derivatives, as described in the
+[ROS2 controller documentation](https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/trajectory.html).
+The checks are sampled bounds, not a proof over every instant.
+
+`test/verify_drawing_motion.py` exercises both gestures in Gazebo from clear,
+checks an independent denser FK sample grid and measured TF coverage/deviation,
+and returns to the recorded clear baseline after each gesture. Temporary records
+are removed. Existing execution and software-stop interfaces are reused.

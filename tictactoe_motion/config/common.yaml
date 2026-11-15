@@ -40,3 +40,5 @@ motion_planner:
     cartesian_orientation_tolerance: 0.003
     dx: 0.0
     dy: 0.0
+    cross_size: 0.02
+    circle_radius: 0.01

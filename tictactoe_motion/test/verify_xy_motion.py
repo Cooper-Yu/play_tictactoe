@@ -6,12 +6,18 @@ import sys
 from pathlib import Path
 from rclpy.utilities import remove_ros_args
 from simulation_support import SimulationHarness, write_report
-from tictactoe_motion.cartesian_planner import orientation_error, polyline_error, xyz
+from tictactoe_motion.cartesian_planner import orientation_error, polyline_error, xyz, interpolate_joint_segment
 
 
 def measure(samples, poses):
     assert len(samples) >= 3, 'Too few trajectory observations'
+    sample_poses = []
+    for sample in samples:
+        p = type(poses[0])()
+        p.position.x, p.position.y, p.position.z = sample['xyz']
+        sample_poses.append(p)
     return {'samples': len(samples),
+            'max_uncovered_waypoint_m': max(polyline_error(xyz(p), sample_poses) for p in poses),
             'max_path_error_m': max(polyline_error(s['xyz'], poses) for s in samples),
             'max_z_error_m': max(abs(s['xyz'][2]-poses[0].position.z) for s in samples),
             'max_orientation_error_rad': max(orientation_error(
@@ -28,8 +34,12 @@ def run(h, service, report):
     poses = copy.deepcopy(h.node.cartesian_planner.poses)
     fk_samples = []
     jt = h.node.planned_trajectory.joint_trajectory
-    for point in jt.points:
-        p = h.fk(dict(zip(jt.joint_names, point.positions)))
+    rows = [list(jt.points[0].positions)]
+    for previous, point in zip(jt.points, jt.points[1:]):
+        rows.extend(interpolate_joint_segment(previous, point, fraction/10) for fraction in range(1, 10))
+        rows.append(list(point.positions))
+    for row in rows:
+        p = h.fk(dict(zip(jt.joint_names, row)))
         q = p.orientation
         fk_samples.append({'xyz': xyz(p), 'xyzw': [q.x, q.y, q.z, q.w]})
     report['planned_geometry'] = measure(fk_samples, poses)
@@ -37,6 +47,7 @@ def run(h, service, report):
     report['actual_geometry'] = measure(h.samples, poses)
     for key in ('planned_geometry', 'actual_geometry'):
         assert report[key]['max_path_error_m'] < 0.0005, report[key]
+        assert report[key]['max_uncovered_waypoint_m'] < 0.0005, report[key]
         assert report[key]['max_z_error_m'] < 0.0005, report[key]
         assert report[key]['max_orientation_error_rad'] < 0.003, report[key]
     assert report['result']['position_error_m'] < 0.0003, report['result']
