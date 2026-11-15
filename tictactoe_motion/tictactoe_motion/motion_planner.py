@@ -4,15 +4,12 @@ from tf2_ros import Buffer, TransformListener
 from rclpy.time import Time
 from tf2_ros import TransformException
 from geometry_msgs.msg import Pose
-import rclpy
 from moveit_msgs.action import MoveGroup
 from shape_msgs.msg import SolidPrimitive
 from moveit_msgs.msg import PositionConstraint, OrientationConstraint, Constraints
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
-import math
-from std_srvs.srv import Trigger
 from tictactoe_motion.trajectory_executor import TrajectoryExecutor
 
 
@@ -31,11 +28,6 @@ class MotionPlanner(Node):
 
         self.move_client = ActionClient(self, MoveGroup, "/move_action")
         self.trajectory_executor = TrajectoryExecutor(self)
-        self.execution_service = self.create_service(
-            Trigger, "/execute_planned_trajectory", self.execution_trigger_callback
-        )
-
-        self.demo_timer = self.create_timer(3.0, self.run_planning_demo)
 
         self.declare_parameter("axis", "x")
         self.declare_parameter("distance", 0.0)
@@ -267,28 +259,3 @@ class MotionPlanner(Node):
                 f"Planning failed: status={status}, "
                 f"MoveIt error code={result.error_code.val}"
             )
-
-    def run_planning_demo(self):
-        self.demo_timer.cancel()
-        axis = self.get_parameter("axis").value
-        distance = self.get_parameter("distance").value
-        if axis not in ("x", "y", "z"):
-            self.get_logger().warning("Invalid axis: expected 'x', 'y', or 'z'")
-            return
-        if not math.isfinite(distance):
-            self.get_logger().warning("Distance must be finite")
-            return
-        if distance == 0.0:
-            self.get_logger().info("Distance is zero, skipping planning")
-            return
-        self.request_plan(axis, distance)
-
-    def execution_trigger_callback(self, request, response):
-        response.success = self.trajectory_executor.execute_planned_trajectory(
-            self.planned_trajectory, self.planned_target_pose
-        )
-        if response.success:
-            response.message = "Execution requested; final result pending"
-        else:
-            response.message = "Execution request not sent; check node logs"
-        return response
