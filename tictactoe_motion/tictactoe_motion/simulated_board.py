@@ -67,9 +67,10 @@ class SimulatedBoard:
     Robot motion stays airborne. The mesh uses the observed link6 XY projection;
     physical pen TCP/contact calibration is explicitly outside this simulator.
     """
-    def __init__(self,node,profile,directory,wait):
+    def __init__(self,node,profile,directory,wait,grouped=False):
         self.profile=profile;self.directory=Path(directory);self.directory.mkdir(exist_ok=True)
         self.wait=wait;self.models=[];self.files=[];self.token=uuid.uuid4().hex[:10]
+        self.grouped=grouped;self.active_files=[]
         self.spawn=node.create_client(SpawnEntity,'/spawn_entity')
         self.delete=node.create_client(DeleteEntity,'/delete_entity')
 
@@ -85,10 +86,18 @@ class SimulatedBoard:
         path=self.directory/(name+'.dae')
         points=sampled_xy(samples);triangles=write_ribbon(path,points,z+.0004,round_joins=True)
         self.files.append(path)
-        sdf=f'''<sdf version="1.6"><model name="{name}"><static>true</static><link name="ink"><visual name="trace"><cast_shadows>false</cast_shadows><geometry><mesh><uri>{path.as_uri()}</uri></mesh></geometry><material><lighting>false</lighting><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual></link></model></sdf>'''
+        paths=self.active_files+[path] if self.grouped else [path]
+        visuals=''.join(f'''<visual name="trace{i}"><cast_shadows>false</cast_shadows><geometry><mesh><uri>{mesh.as_uri()}</uri></mesh></geometry><material><lighting>false</lighting><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual>''' for i,mesh in enumerate(paths))
+        sdf=f'''<sdf version="1.6"><model name="{name}"><static>true</static><link name="ink">{visuals}</link></model></sdf>'''
         response=self.wait(self.spawn.call_async(SpawnEntity.Request(name=name,xml=sdf,reference_frame='world')))
         if not response.success:raise RuntimeError(response.status_message)
-        self.models.append(name)
+        previous=list(self.models);self.models.append(name)
+        if self.grouped:
+            self.active_files=paths
+            for old in previous:
+                deleted=self.wait(self.delete.call_async(DeleteEntity.Request(name=old)))
+                if not deleted.success:raise RuntimeError(deleted.status_message)
+                self.models.remove(old)
         return {'model':name,'points':len(points),'triangles':triangles,'source':'actual link6 XY feedback'}
 
     def clear(self):
@@ -96,6 +105,7 @@ class SimulatedBoard:
             response=self.wait(self.delete.call_async(DeleteEntity.Request(name=name)))
             if not response.success:raise RuntimeError(response.status_message)
             self.models.remove(name)
+        self.active_files=[]
 
     def press_reset(self,samples):
         if not reset_gesture(samples,self.profile['reset_center'],self.profile['hover_link6_z_m'],self.profile['drawing_link6_z_m']):return False

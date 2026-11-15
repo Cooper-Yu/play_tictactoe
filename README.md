@@ -301,3 +301,6 @@ rendered pen footprint; they do not change robot waypoints or pressure.
 The chair is an approximate repaired raster trace rather than the original
 vector artwork. Docker is an outline, without solid-region fill. The supplied
 materials do not constitute a completed Web GUI or real-robot calibration.
+## Local tablet canvas
+
+See [tictactoe_gui/README.md](tictactoe_gui/README.md) for the local simulation-only Web tablet. Draw ordered strokes or load the chair/whale/smile previews, then explicitly execute; startup and asset selection never move the arm. The white Reset button clears the composite simulation ink in one operation.
