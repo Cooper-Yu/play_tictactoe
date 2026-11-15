@@ -1,6 +1,7 @@
 from pathlib import Path
 import math
-
+import json
+import tempfile
 
 class PoseRecorder:
     """!
@@ -119,3 +120,35 @@ class PoseRecorder:
         }
 
         self.poses[name] = record
+
+    def save_to_file(self):
+        """!
+        @brief Save all named records to the configured JSON file.
+        """
+        self.poses_file.parent.mkdir(parents=True, exist_ok=True)
+
+        json_text = json.dumps(
+            self.poses,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.poses_file.parent,
+                prefix=f".{self.poses_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+                temp_file.write(json_text)
+
+            temp_path.replace(self.poses_file)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+
