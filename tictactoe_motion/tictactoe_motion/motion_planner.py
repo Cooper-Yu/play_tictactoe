@@ -130,20 +130,21 @@ class MotionPlanner(Node):
     def request_plan(self, axis, distance):
         if self.current_joint_state is None:
             self.get_logger().warning("Cannot plan: joint states unavailable")
-            return
+            return False
         current_transform = self.get_current_pose()
         if current_transform is None:
-            return
+            return False
         target_pose = self.calculate_target_pose(current_transform, axis, distance)
         self.planned_target_pose = target_pose
         goal = self.build_planning_goal(target_pose, self.current_joint_state)
         if goal is None:
-            return
+            return False
         if not self.move_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().warning("MoveIt action server unavailable")
-            return
+            return False
         self.send_goal_future = self.move_client.send_goal_async(goal)
         self.send_goal_future.add_done_callback(self.goal_response_callback)
+        return True
 
     def goal_response_callback(self, future):
         goal_handle = future.result()
