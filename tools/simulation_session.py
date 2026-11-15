@@ -56,6 +56,17 @@ def terminate_owned(tag):
     return owned_processes(tag)
 
 
+def disable_shadows(env):
+    """! @brief Apply a reversible visual-only profile to this session's Gazebo master."""
+    try:
+        result = subprocess.run(
+            ['gz', 'topic', '-p', '/gazebo/default/scene', '-m',
+             'name: "default" shadows: false'], env=env, capture_output=True,
+            text=True, timeout=2)
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--domain', type=int, default=187)
@@ -63,6 +74,7 @@ def main():
     parser.add_argument('--render-threads', type=int, choices=(1, 2, 4), default=2)
     parser.add_argument('--duration', type=float, default=900.)
     parser.add_argument('--with-moveit', action='store_true')
+    parser.add_argument('--keep-shadows', action='store_true')
     parser.add_argument('--state-dir', required=True)
     args = parser.parse_args()
     if not 0 <= args.domain <= 232 or not 1024 <= args.master_port <= 65535 or not 0 < args.duration <= 3600:
@@ -107,10 +119,20 @@ def main():
                 state['pids'].append(child.pid)
             (root/'session.json').write_text(json.dumps(state, indent=2))
             print('SIMULATION_SESSION_STARTED '+json.dumps(state), flush=True)
-            deadline = time.monotonic()+args.duration
+            started = time.monotonic()
+            deadline = started+args.duration
+            display_applied = args.keep_shadows
+            next_display_attempt = started+8.0
             while not stopped and time.monotonic() < deadline and not (root/'STOP').exists():
                 if any(child.poll() is not None for child in children):
                     raise RuntimeError('Gazebo or MoveIt launch exited; inspect session logs')
+                if not display_applied and time.monotonic() >= next_display_attempt:
+                    display_applied = disable_shadows(env)
+                    next_display_attempt = time.monotonic()+3.0
+                    state['shadows_disabled'] = display_applied
+                    (root/'session.json').write_text(json.dumps(state, indent=2))
+                    if display_applied:
+                        print('VISUAL_PROFILE_APPLIED shadows=false', flush=True)
                 time.sleep(.2)
         finally:
             remaining = terminate_owned(tag)

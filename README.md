@@ -57,3 +57,10 @@ robot motion. Closing Gazebo's GUI may also terminate the original course launch
 the manager then cleans the rest of its own session. Reuse the existing session
 rather than starting the original launch repeatedly. The manager does not kill
 unmanaged user sessions or change physics, camera resolution or course assets.
+
+The manager also disables Gazebo scene shadows after startup. This is a reversible
+rendering change; use `--keep-shadows` to preserve the original appearance. On the
+measured software-rendered cloud session, an on/off comparison of the GUI camera
+update topic measured about 1.1–1.2 Hz with shadows and 4.5–5.7 Hz without them.
+The physics real-time factor remained approximately 0.95–0.97. This improves visual
+feedback but does not make the CPU renderer as smooth as a local GPU.

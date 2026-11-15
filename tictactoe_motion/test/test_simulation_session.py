@@ -32,3 +32,16 @@ def test_actual_local_duplicate_refused_without_launch(tmp_path):
     assert result.returncode != 0
     assert 'refusing a duplicate' in result.stderr
     assert not (tmp_path/'session.json').exists()
+
+
+def test_visual_profile_targets_only_supplied_master(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    call=Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(session.subprocess,'run',call)
+    environment={'GAZEBO_MASTER_URI':'http://127.0.0.1:11605'}
+    assert session.disable_shadows(environment)
+    assert call.call_args.kwargs['env']==environment
+    assert call.call_args.args[0][-1]=='name: "default" shadows: false'
+    call.return_value.returncode=1
+    assert not session.disable_shadows(environment)
