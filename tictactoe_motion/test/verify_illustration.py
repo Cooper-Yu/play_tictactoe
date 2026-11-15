@@ -1,4 +1,4 @@
-"""Gazebo-only parameterized grid and a complete explicit-turn Gomoku game."""
+"""Gazebo-only lifted illustration drawing, virtual Reset, and return to zero."""
 import argparse
 import hashlib
 from importlib.resources import files

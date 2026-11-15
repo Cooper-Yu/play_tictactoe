@@ -262,3 +262,42 @@ board_demo_sim ROS parameter files and a temporary output/poses file. The larger
 remains0.5rad and the production per-sample jump, FK path, joint-limit, collision
 and execution checks remain in force. This is one demonstrated configuration,
 not runtime certification of all sizes or all board cells.
+
+### Scalable illustration materials
+
+`IllustrationDrawing` reuses `DrawingActions` and its existing motion driver.
+The local material library is
+[tictactoe_motion/tictactoe_motion/illustrations](tictactoe_motion/tictactoe_motion/illustrations/README.md):
+chair centerlines, Docker outlines and a full smile with slightly offset double
+strokes. JSON contains normalized pen paths and source attribution; SVG provides
+a resolution-independent preview of the same paths.
+
+```python
+from tictactoe_motion.illustration_drawing import IllustrationDrawing
+
+picture = IllustrationDrawing(actions)
+paths = picture.strokes('chair', center=(0.5, 0.5), width=0.06, rotation=180)
+picture.draw('chair', center=(0.5, 0.5), width=0.06, rotation=180)
+picture.export_svg('chair', '/tmp/chair.svg')
+```
+
+Width is in meters and scaling preserves the physical aspect ratio. Center uses
+board-local `(u,v)` and rotation is in the canvas plane. The 180-degree simulation
+view choice is not camera calibration. All geometry batches are validated before
+movement; acute reversals use separate lifted strokes. Identical consecutive
+stroke endpoints do not require a zero-length hover transfer. The supplied canvas
+and acceptance remain simulation-only; changing size or placement still requires
+planning and execution checks.
+
+`test/verify_illustration.py --shape chair|docker|smile --output <owned-run-dir>`
+uses the existing common/sim/optional board_demo_sim parameter files, an owned
+`poses_file`, and `cartesian_step:=0.0003`. It records actual TF, renders measured
+ink, verifies virtual Reset, and returns to zero on normal completion. A complete
+60mm-width local run passed for all three assets (82/12/12 lifted strokes).
+The smile's outer face, eyes and mouth use two slightly offset paths, while the
+simulated pen width remains 1mm. Rounded mesh joins/caps fill corner holes in the
+rendered pen footprint; they do not change robot waypoints or pressure.
+
+The chair is an approximate repaired raster trace rather than the original
+vector artwork. Docker is an outline, without solid-region fill. The supplied
+materials do not constitute a completed Web GUI or real-robot calibration.

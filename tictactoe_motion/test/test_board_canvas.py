@@ -95,3 +95,27 @@ def test_profile_rejects_tilt_and_wrong_environment():
 def test_invalid_feedback_cannot_trigger_reset():
     center=profile()['reset_center']
     assert not reset_gesture([{'xyz':[center[0],center[1],.25]}, {'xyz':[float('nan'),center[1],.24]}],center)
+
+
+def test_round_pen_joins_fill_the_outside_corner_and_keep_fixed_width(tmp_path):
+    def triangles(round_joins):
+        path=tmp_path/('round.dae' if round_joins else 'flat.dae')
+        write_ribbon(path,[(.2,0),(.21,0),(.21,.01)],.0274,round_joins=round_joins)
+        root=ET.parse(path).getroot();ns={'c':root.tag.split('}')[0][1:]}
+        values=list(map(float,root.find('.//c:float_array',ns).text.split()))
+        return [[tuple(values[j:j+2]) for j in range(i,i+9,3)] for i in range(0,len(values),9)]
+    def contains(triangles,point):
+        for a,b,c in triangles:
+            def cross(a,b,p):return (b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0])
+            if abs(cross(a,b,c))<1e-16:continue
+            signs=[cross(a,b,point),cross(b,c,point),cross(c,a,point)]
+            if min(signs)>=-1e-14 or max(signs)<=1e-14:return True
+        return False
+    outside_corner=(.21025,-.00025)
+    assert not contains(triangles(False),outside_corner)
+    rounded=triangles(True)
+    assert contains(rounded,outside_corner)
+    assert not contains(rounded,(.2106,-.0006))
+    points=[p for triangle in rounded for p in triangle]
+    assert math.isclose(min(p[0] for p in points),.1995)
+    assert math.isclose(max(p[1] for p in points),.0105)

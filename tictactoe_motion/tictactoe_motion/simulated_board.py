@@ -15,8 +15,8 @@ def sampled_xy(samples, spacing=.0003):
     return result
 
 
-def write_ribbon(path, points, z, width=.001):
-    """! @brief Build a flat triangle ribbon without collision geometry or contact claims."""
+def write_ribbon(path, points, z, width=.001, round_joins=False):
+    """! @brief Build a flat pen footprint with optional round joins; no collision/contact model."""
     vertices=[]
     for a,b in zip(points,points[1:]):
         dx,dy=b[0]-a[0],b[1]-a[1];length=math.hypot(dx,dy)
@@ -25,6 +25,14 @@ def write_ribbon(path, points, z, width=.001):
         v=[(a[0]+ox,a[1]+oy,z),(a[0]-ox,a[1]-oy,z),(b[0]+ox,b[1]+oy,z),(b[0]-ox,b[1]-oy,z)]
         vertices.extend([v[0],v[1],v[2],v[2],v[1],v[3]])
     if not vertices:raise ValueError('No drawable movement')
+    if round_joins:
+        # Sweep a fixed circular pen footprint through each observed point.
+        # Separate rectangles alone leave holes outside a turning join.
+        for x,y in points:
+            for i in range(16):
+                a,b=2*math.pi*i/16,2*math.pi*(i+1)/16
+                vertices.extend([(x,y,z),(x+width/2*math.cos(a),y+width/2*math.sin(a),z),
+                                 (x+width/2*math.cos(b),y+width/2*math.sin(b),z)])
     positions=' '.join(str(value) for point in vertices for value in point)
     indices=' '.join(str(i) for i in range(len(vertices)))
     text=f'''<?xml version="1.0"?><COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
@@ -75,7 +83,7 @@ class SimulatedBoard:
                 raise ValueError('Observed stroke outside virtual drawing region/height')
         name='ptt_ink_'+self.token+'_'+str(len(self.files))
         path=self.directory/(name+'.dae')
-        points=sampled_xy(samples);triangles=write_ribbon(path,points,z+.0004)
+        points=sampled_xy(samples);triangles=write_ribbon(path,points,z+.0004,round_joins=True)
         self.files.append(path)
         sdf=f'''<sdf version="1.6"><model name="{name}"><static>true</static><link name="ink"><visual name="trace"><cast_shadows>false</cast_shadows><geometry><mesh><uri>{path.as_uri()}</uri></mesh></geometry><material><lighting>false</lighting><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual></link></model></sdf>'''
         response=self.wait(self.spawn.call_async(SpawnEntity.Request(name=name,xml=sdf,reference_frame='world')))
