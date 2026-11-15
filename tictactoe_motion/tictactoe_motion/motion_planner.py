@@ -24,7 +24,6 @@ class MotionPlanner(Node):
         )
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.state_timer = self.create_timer(1.0, self.report_current_state)
 
         self.move_client = ActionClient(self, MoveGroup, "/move_action")
         self.trajectory_executor = TrajectoryExecutor(self)
@@ -71,43 +70,6 @@ class MotionPlanner(Node):
         else:
             raise ValueError("axis must be 'x', 'y', 'z'")
         return target_pose
-
-    def report_current_state(self):
-        if self.current_joint_state is None:
-            self.get_logger().info("Waiting for joint states")
-            return
-        joint_position = dict(
-            zip(self.current_joint_state.name, self.current_joint_state.position)
-        )
-        required_joints = [f"joint{i}" for i in range(1, 7)]
-        if any(name not in joint_position for name in required_joints):
-            self.get_logger().warning("Joint states are incomplete")
-            return
-        joint_summary = ", ".join(
-            f"{name}={joint_position[name]:.4f}" for name in required_joints
-        )
-        self.get_logger().info(f"Joint positions (rad): {joint_summary}")
-        transform = self.get_current_pose()
-        if transform is None:
-            return
-
-        translation = transform.transform.translation
-        orientation = transform.transform.rotation
-
-        self.get_logger().info(
-            f"link6 position (m): "
-            f"x={translation.x:.4f}, "
-            f"y={translation.y:.4f}, "
-            f"z={translation.z:.4f}"
-        )
-
-        self.get_logger().info(
-            f"link6 orientation (quaternion xyzw): "
-            f"x={orientation.x:.4f}, "
-            f"y={orientation.y:.4f}, "
-            f"z={orientation.z:.4f}, "
-            f"w={orientation.w:.4f}"
-        )
 
     def build_planning_goal(self, target_pose, current_joint_state):
         goal = MoveGroup.Goal()

@@ -16,6 +16,7 @@ class MotionDemo:
             "/execute_planned_trajectory",
             self.execution_trigger_callback
         )
+        self.state_timer = self.node.create_timer(1.0, self.report_current_state)
 
     def run_planning_demo(self):
         self.demo_timer.cancel()
@@ -42,6 +43,42 @@ class MotionDemo:
             response.message = "Execution request not sent; check node logs"
         return response
 
+    def report_current_state(self):
+        if self.node.current_joint_state is None:
+            self.node.get_logger().info("Waiting for joint states")
+            return
+        joint_position = dict(
+            zip(self.node.current_joint_state.name, self.node.current_joint_state.position)
+        )
+        required_joints = [f"joint{i}" for i in range(1, 7)]
+        if any(name not in joint_position for name in required_joints):
+            self.node.get_logger().warning("Joint states are incomplete")
+            return
+        joint_summary = ", ".join(
+            f"{name}={joint_position[name]:.4f}" for name in required_joints
+        )
+        self.node.get_logger().info(f"Joint positions (rad): {joint_summary}")
+        transform = self.node.get_current_pose()
+        if transform is None:
+            return
+
+        translation = transform.transform.translation
+        orientation = transform.transform.rotation
+
+        self.node.get_logger().info(
+            f"link6 position (m): "
+            f"x={translation.x:.4f}, "
+            f"y={translation.y:.4f}, "
+            f"z={translation.z:.4f}"
+        )
+
+        self.node.get_logger().info(
+            f"link6 orientation (quaternion xyzw): "
+            f"x={orientation.x:.4f}, "
+            f"y={orientation.y:.4f}, "
+            f"z={orientation.z:.4f}, "
+            f"w={orientation.w:.4f}"
+        )
 
 def main(args=None):
     rclpy.init(args=args)
