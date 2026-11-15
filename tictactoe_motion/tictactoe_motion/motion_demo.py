@@ -2,6 +2,7 @@ import rclpy
 from tictactoe_motion.motion_planner import MotionPlanner
 import math
 from std_srvs.srv import Trigger
+from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
 
 
 class MotionDemo:
@@ -37,7 +38,8 @@ class MotionDemo:
 
     def execution_trigger_callback(self, request, response):
         response.success = self.node.trajectory_executor.execute_planned_trajectory(
-            self.node.planned_trajectory, self.node.planned_target_pose
+            self.node.planned_trajectory, self.node.planned_target_pose,
+            self.node.planned_target_joints, self.node.planned_record_name,
         )
         if response.success:
             response.message = "Execution requested; final result pending"
@@ -97,12 +99,16 @@ class MotionDemo:
 def main(args=None):
     rclpy.init(args=args)
     node = MotionPlanner()
-    demo = MotionDemo(node)
+    recording_demo = None
     try:
+        _motion_demo = MotionDemo(node)
+        recording_demo = PoseRecordingDemo(node)
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
+        if recording_demo is not None:
+            recording_demo.close()
         node.destroy_node()
         rclpy.try_shutdown()
 

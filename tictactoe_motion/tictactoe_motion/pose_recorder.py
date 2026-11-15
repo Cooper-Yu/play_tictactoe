@@ -1,4 +1,5 @@
 from pathlib import Path
+import copy
 import math
 import json
 import tempfile
@@ -327,3 +328,16 @@ class PoseRecorder:
             raise KeyError(f"Record does not exist: {name}")
 
         del self.poses[name]
+
+    def get_pose(self, name):
+        """!
+        @brief Return an independent copy of a named record.
+
+        @param name Name of the record to retrieve.
+        """
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Record name must be a non-empty string")
+        name = name.strip()
+        if name not in self.poses:
+            raise KeyError(f"Record does not exist: {name}")
+        return copy.deepcopy(self.poses[name])

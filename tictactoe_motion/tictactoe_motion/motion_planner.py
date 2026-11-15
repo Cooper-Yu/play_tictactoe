@@ -4,9 +4,12 @@ from tf2_ros import Buffer, TransformListener
 from rclpy.time import Time
 from tf2_ros import TransformException
 from geometry_msgs.msg import Pose
+import copy
+import math
+import time
 from moveit_msgs.action import MoveGroup
 from shape_msgs.msg import SolidPrimitive
-from moveit_msgs.msg import PositionConstraint, OrientationConstraint, Constraints
+from moveit_msgs.msg import PositionConstraint, OrientationConstraint, Constraints, JointConstraint
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
@@ -19,7 +22,11 @@ class MotionPlanner(Node):
         self.current_joint_state = None
         self.planned_trajectory = None
         self.planned_target_pose = None
+        self.planned_target_joints = None
+        self.planned_record_name = None
         self.is_planning = False
+        self.is_recording = False
+        self.last_joint_state_received = None
         self.joint_state_subscription = self.create_subscription(
             JointState, "/joint_states", self.joint_state_callback, 10
         )
@@ -38,6 +45,22 @@ class MotionPlanner(Node):
     def joint_state_callback(self, msg):
         self.current_joint_state = msg
         self.joint_state_sequence += 1
+        self.last_joint_state_received = time.monotonic()
+
+    def feedback_is_fresh(self, max_age=1.0):
+        """! @brief Check reception age using the monotonic clock, not ROS timestamps."""
+        return (
+            self.current_joint_state is not None
+            and self.last_joint_state_received is not None
+            and time.monotonic() - self.last_joint_state_received <= max_age
+        )
+
+    def invalidate_plan(self):
+        """! @brief Remove a pending trajectory and its target metadata."""
+        self.planned_trajectory = None
+        self.planned_target_pose = None
+        self.planned_target_joints = None
+        self.planned_record_name = None
 
     def get_current_pose(self):
         try:
@@ -128,7 +151,57 @@ class MotionPlanner(Node):
         goal.planning_options.plan_only = True
         return goal
 
+    def request_joint_plan(self, joint_positions, target_pose, record_name=None):
+        """! @brief Plan, without executing, a return to a recorded joint configuration."""
+        if self.is_planning or self.is_recording or self.trajectory_executor.is_executing:
+            self.get_logger().warning("Cannot plan return: another task is in progress")
+            return False
+        self.invalidate_plan()
+        if not self.feedback_is_fresh():
+            self.get_logger().warning("Cannot plan return: fresh joint feedback unavailable")
+            return False
+        names = [f"joint{i}" for i in range(1, 7)]
+        if any(name not in joint_positions for name in names):
+            self.get_logger().warning("Return target must contain joint1 through joint6")
+            return False
+        if not all(math.isfinite(joint_positions[name]) for name in names):
+            self.get_logger().warning("Return joint positions must be finite")
+            return False
+        # Reuse the existing request settings, then replace only the goal constraints.
+        goal = self.build_planning_goal(target_pose, copy.deepcopy(self.current_joint_state))
+        if goal is None:
+            return False
+        constraints = Constraints()
+        for name in names:
+            constraint = JointConstraint()
+            constraint.joint_name = name
+            constraint.position = float(joint_positions[name])
+            constraint.tolerance_above = 0.0001
+            constraint.tolerance_below = 0.0001
+            constraint.weight = 1.0
+            constraints.joint_constraints.append(constraint)
+        goal.request.goal_constraints = [constraints]
+        if not self.move_client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().warning("MoveIt action server unavailable")
+            return False
+        self.planned_target_pose = copy.deepcopy(target_pose)
+        self.planned_target_joints = {name: joint_positions[name] for name in names}
+        self.planned_record_name = record_name
+        self.is_planning = True
+        try:
+            self.send_goal_future = self.move_client.send_goal_async(goal)
+            self.send_goal_future.add_done_callback(self.goal_response_callback)
+        except Exception as error:
+            self.is_planning = False
+            self.invalidate_plan()
+            self.get_logger().error(f"Failed to send return planning request: {error}")
+            return False
+        return True
+
     def request_plan(self, axis, distance):
+        if getattr(self, "is_recording", False):
+            self.get_logger().warning("Cannot plan: pose recording is in progress")
+            return False
         if self.is_planning:
             self.get_logger().warning("Cannot plan: planning already in progress")
             return False
@@ -141,6 +214,8 @@ class MotionPlanner(Node):
 
         self.planned_trajectory = None
         self.planned_target_pose = None
+        self.planned_target_joints = None
+        self.planned_record_name = None
         if self.current_joint_state is None:
             self.get_logger().warning("Cannot plan: joint states unavailable")
             return False

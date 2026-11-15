@@ -1,4 +1,5 @@
 from rclpy.action import ActionClient
+import copy
 from moveit_msgs.action import ExecuteTrajectory
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
@@ -18,6 +19,10 @@ class TrajectoryExecutor:
     def __init__(self, node):
         self.node = node
         self.is_executing = False
+        self.last_comparison = None
+        self.target_joint_positions = None
+        self.target_record_name = None
+        self.on_verification = None
         self.execute_client = ActionClient(
             self.node, ExecuteTrajectory, "/execute_trajectory"
         )
@@ -148,8 +153,14 @@ class TrajectoryExecutor:
         )
         try:
             self.compare_execution_result(actual_transform)
+        except Exception as error:
+            self.last_comparison = {"passed": False, "error": str(error)}
+            self.node.get_logger().error(f"Execution verification failed: {error}")
         finally:
             self.is_executing = False
+        callback = getattr(self, "on_verification", None)
+        if callback is not None:
+            callback(self.target_record_name, self.last_comparison)
 
     def compare_execution_result(self, actual_transform):
         start = self.execution_start_transform.transform.translation
@@ -178,8 +189,42 @@ class TrajectoryExecutor:
             f"Position error={position_error:.6f} m, "
             f"orientation error={angle_error:.6f} rad"
         )
+        self.last_comparison = {
+            "position_error_m": position_error,
+            "orientation_error_rad": angle_error,
+            "displacement_m": list(displacement),
+        }
+        target_joints = getattr(self, "target_joint_positions", None)
+        if target_joints is not None:
+            state = self.node.current_joint_state
+            actual_joints = dict(zip(state.name, state.position))
+            joint_errors = {
+                name: abs(actual_joints[name] - target)
+                for name, target in target_joints.items()
+            }
+            max_error = max(joint_errors.values())
+            passed = (
+                max_error <= 0.001
+                and position_error <= 0.0003
+                and angle_error <= 0.003
+            )
+            self.last_comparison.update(
+                joint_errors_rad=joint_errors,
+                max_joint_error_rad=max_error,
+                passed=passed,
+            )
+            self.node.get_logger().info(
+                f"Return verification {'PASSED' if passed else 'FAILED'}: "
+                f"max joint error={max_error:.6f} rad"
+            )
 
-    def execute_planned_trajectory(self, planned_trajectory, target_pose):
+    def execute_planned_trajectory(
+        self, planned_trajectory, target_pose, target_joint_positions=None,
+        target_record_name=None,
+    ):
+        if getattr(self.node, "is_recording", False):
+            self.node.get_logger().warning("Cannot execute: pose recording is in progress")
+            return False
         if self.is_executing:
             self.node.get_logger().warning(
                 "Cannot execute: execution already in progress"
@@ -190,11 +235,23 @@ class TrajectoryExecutor:
                 "Cannot execute: planning is in progress"
             )
             return False
-        self.planned_trajectory = planned_trajectory
-        self.planned_target_pose = target_pose
+        self.planned_trajectory = copy.deepcopy(planned_trajectory)
+        self.planned_target_pose = copy.deepcopy(target_pose)
+        self.target_joint_positions = copy.deepcopy(target_joint_positions)
+        self.target_record_name = target_record_name
+        self.last_comparison = None
 
         if self.planned_trajectory is None:
             self.node.get_logger().warning("No planned trajectory to execute")
+            return False
+
+        if self.planned_target_pose is None:
+            self.node.get_logger().warning("Cannot execute: target pose unavailable")
+            return False
+
+        fresh_check = getattr(self.node, "feedback_is_fresh", None)
+        if fresh_check is not None and not fresh_check():
+            self.node.get_logger().warning("Cannot execute: joint feedback is stale")
             return False
 
         if self.node.current_joint_state is None:
