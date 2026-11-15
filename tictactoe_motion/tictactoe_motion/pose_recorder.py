@@ -2,6 +2,9 @@ from pathlib import Path
 import math
 import json
 import tempfile
+from sensor_msgs.msg import JointState
+from geometry_msgs.msg import PoseStamped
+
 
 class PoseRecorder:
     """!
@@ -152,3 +155,159 @@ class PoseRecorder:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
 
+    def load_from_file(self, environment):
+        """!
+        @brief Load and validate records for the current environment.
+
+        @param environment Expected environment: sim or real.
+        """
+        if environment not in ("sim", "real"):
+            raise ValueError("Environment must be 'sim' or 'real'")
+
+        json_text = self.poses_file.read_text(encoding="utf-8")
+
+        records = json.loads(json_text)
+
+        if not isinstance(records, dict):
+            raise TypeError("Pose file must contain a JSON object")
+
+        validated_recorder = PoseRecorder(self.poses_file)
+
+        for name, record in records.items():
+            if not isinstance(record, dict):
+                raise TypeError(f"Record {name!r} must be a JSON object")
+
+            if record.get("environment") != environment:
+                raise ValueError(
+                    f"Record {name!r} does not match environment {environment!r}"
+                )
+
+            if not name or name != name.strip():
+                raise ValueError("Record names must be non-empty and trimmed")
+
+            if record.get("name") != name:
+                raise ValueError(f"Record name does not match key {name!r}")
+
+            if record.get("tip_link") != "link6":
+                raise ValueError(f"Record {name!r} must describe link6")
+
+            joint_data = record.get("joint_state")
+            if not isinstance(joint_data, dict):
+                raise TypeError(f"Record {name!r} has invalid joint_state")
+
+            positions_data = joint_data.get("positions")
+            if not isinstance(positions_data, dict):
+                raise TypeError(f"Record {name!r} has invalid joint positions")
+
+            if not all(
+                isinstance(angle, (int, float)) and not isinstance(angle, bool)
+                for angle in positions_data.values()
+            ):
+                raise TypeError(f"Record {name!r} has non-numeric joint positions")
+
+            joint_state = JointState()
+            joint_state.name = list(positions_data.keys())
+            joint_state.position = [
+                float(angle) for angle in positions_data.values()
+            ]
+
+            stamp_data = joint_data.get("stamp")
+            if not isinstance(stamp_data, dict):
+                raise TypeError(f"Record {name!r} has invalid joint timestamp")
+
+            sec = stamp_data.get("sec")
+            nanosec = stamp_data.get("nanosec")
+
+            if any(
+                not isinstance(value, int) or isinstance(value, bool)
+                for value in (sec, nanosec)
+            ):
+                raise TypeError("Timestamp fields must be integers")
+
+            if not -(2**31) <= sec < 2**31:
+                raise ValueError("Timestamp seconds are out of range")
+
+            if not 0 <= nanosec < 1_000_000_000:
+                raise ValueError("Timestamp nanoseconds are out of range")
+
+            joint_state.header.stamp.sec = sec
+            joint_state.header.stamp.nanosec = nanosec
+
+            pose_stamped_data = record.get("pose_stamped")
+            if not isinstance(pose_stamped_data, dict):
+                raise TypeError(f"Record {name!r} has invalid pose_stamped")
+
+            header_data = pose_stamped_data.get("header")
+            pose_data = pose_stamped_data.get("pose")
+
+            if not isinstance(header_data, dict):
+                raise TypeError(f"Record {name!r} has invalid pose header")
+
+            if not isinstance(pose_data, dict):
+                raise TypeError(f"Record {name!r} has invalid pose data")
+
+            frame_id = header_data.get("frame_id")
+            if not isinstance(frame_id, str):
+                raise TypeError(f"Record {name!r} has invalid frame_id")
+
+            pose_stamped = PoseStamped()
+            pose_stamped.header.frame_id = frame_id
+
+            stamp_data = header_data.get("stamp")
+            if not isinstance(stamp_data, dict):
+                raise TypeError(f"Record {name!r} has invalid pose timestamp")
+
+            sec = stamp_data.get("sec")
+            nanosec = stamp_data.get("nanosec")
+
+            if any(
+                not isinstance(value, int) or isinstance(value, bool)
+                for value in (sec, nanosec)
+            ):
+                raise TypeError("Timestamp fields must be integers")
+
+            if not -(2**31) <= sec < 2**31:
+                raise ValueError("Timestamp seconds are out of range")
+
+            if not 0 <= nanosec < 1_000_000_000:
+                raise ValueError("Timestamp nanoseconds are out of range")
+
+            pose_stamped.header.stamp.sec = sec
+            pose_stamped.header.stamp.nanosec = nanosec
+
+            position_data = pose_data.get("position")
+            orientation_data = pose_data.get("orientation")
+
+            if not isinstance(position_data, dict):
+                raise TypeError(f"Record {name!r} has invalid position")
+
+            if not isinstance(orientation_data, dict):
+                raise TypeError(f"Record {name!r} has invalid orientation")
+
+            position_values = [
+                position_data.get(axis) for axis in ("x", "y", "z")
+            ]
+            orientation_values = [
+                orientation_data.get(axis) for axis in ("x", "y", "z", "w")
+            ]
+
+            if not all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                for value in position_values + orientation_values
+            ):
+                raise TypeError(f"Record {name!r} has non-numeric pose values")
+
+            pose_stamped.pose.position.x = float(position_values[0])
+            pose_stamped.pose.position.y = float(position_values[1])
+            pose_stamped.pose.position.z = float(position_values[2])
+
+            pose_stamped.pose.orientation.x = float(orientation_values[0])
+            pose_stamped.pose.orientation.y = float(orientation_values[1])
+            pose_stamped.pose.orientation.z = float(orientation_values[2])
+            pose_stamped.pose.orientation.w = float(orientation_values[3])
+
+            validated_recorder.record_pose(
+                name, joint_state, pose_stamped, environment
+            )
+
+        self.poses = validated_recorder.poses
