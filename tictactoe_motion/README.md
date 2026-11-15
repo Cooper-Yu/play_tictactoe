@@ -16,7 +16,8 @@ source install/setup.bash
 ros2 launch tictactoe_motion motion_demo.launch.py environment:=sim
 ```
 
-The default file is `~/ros2_ws/src/play_tictactoe/data/poses_sim.json`.
+The default environment is `real`, with `~/ros2_ws/src/play_tictactoe/data/poses_real.json`.
+The explicit `environment:=sim` example above selects `poses_sim.json` instead.
 Override it using `poses_file:=/absolute/path/poses_sim.json`. `environment` and
 `poses_file` are fixed for one run. Use a separate real record file with
 `environment:=real`; changing the label does not connect or start real hardware.
@@ -102,3 +103,55 @@ The measured return position error was 0.0283 mm, orientation error was
 0.0000569 rad, and maximum joint error was 0.0000802 rad. These are results of one
 simulation run and do not establish real-hardware precision. Temporary test
 nodes were destroyed and the simulated arm was returned to the recorded pose.
+
+## Environment configuration
+
+Both packages load `config/common.yaml`, then `config/real.yaml` (the default)
+or `config/sim.yaml`, then explicit launch arguments. Shared settings describe
+planning, capture and verification; environment files select the clock and
+separate record files. Real thresholds currently retain the demo values and
+require hardware validation. Loading `real` configuration never starts a driver
+or sends a motion goal. Gazebo, drivers and MoveIt are started separately.
+
+```bash
+# Default: real settings; no planning or execution on startup.
+ros2 launch tictactoe_motion motion_demo.launch.py
+# Local Gazebo/MoveIt, using /clock.
+ros2 launch tictactoe_motion motion_demo.launch.py environment:=sim
+# Override an environment value or a shared command parameter.
+ros2 launch tictactoe_motion motion_demo.launch.py environment:=sim \
+  distance:=0.005 velocity_scaling:=0.1 poses_file:=/tmp/poses_sim.json
+```
+
+Motion settings use meters, radians and seconds. Startup-only settings are
+read-only parameters: joint topic/action names, planning group/time/attempts,
+position/orientation/joint goal tolerances, server and feedback timeouts,
+execution start tolerance, settling period/count/threshold/timeout, recording
+timeout and return verification tolerances. Set `state_log_period: 0.0` to disable
+periodic console output. The command parameters `axis`, `distance`,
+`velocity_scaling`, `acceleration_scaling`, `record_name` and `overwrite` remain
+writable through `ros2 param set`. Keep positive finite timeouts and tolerances;
+counts must be positive integers. Invalid startup settings fail before creating
+motion interfaces. Model identity remains `base_link`, `link6`, joint1..joint6;
+the existing Piper MoveIt package owns the robot model and controller setup.
+
+Use launch for YAML loading; bare `ros2 run` uses code defaults unless passed
+`--ros-args --params-file ...`. Rebuild after adding config files; with
+`--symlink-install`, editing an already installed YAML applies on the next launch.
+Configuration changes do not hot-reload an active node.
+
+Configuration tests (no arm motion):
+
+```bash
+cd ~/ros2_ws/src/play_tictactoe
+python3 -m pytest tictactoe_motion/test/test_configuration.py \
+  tictactoe_motion/test/test_pose_recording_demo.py \
+  tictactoe_perception/test/test_perception_configuration.py -q
+# Use an isolated ROS domain and ROS_LOCALHOST_ONLY=1 for this launch check.
+python3 tictactoe_motion/test/verify_launch_configuration.py
+```
+
+The launch check starts/stops temporary processes, reads parameter services, and
+publishes synthetic RGB frames. It selects the system OpenCV with
+`PYTHONNOUSERSITE=1` and Qt offscreen mode to avoid opening desktop windows.
+It does not validate real camera transport, robot execution or interactive GUI use.

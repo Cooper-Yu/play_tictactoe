@@ -15,7 +15,10 @@ class MotionDemo:
         self.execution_service = self.node.create_service(
             Trigger, "/execute_planned_trajectory", self.execution_trigger_callback
         )
-        self.state_timer = self.node.create_timer(1.0, self.report_current_state)
+        period = self.node.settings["state_log_period"]
+        self.state_timer = (
+            self.node.create_timer(period, self.report_current_state) if period > 0 else None
+        )
         self.planning_service = self.node.create_service(
             Trigger,
             "/plan_step",

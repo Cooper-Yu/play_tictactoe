@@ -1,76 +1,39 @@
-from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
-from launch_ros.parameter_descriptions import ParameterValue
+"""Load shared settings, the selected environment and explicit launch overrides."""
+
 from pathlib import Path
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def _start_node(context):
+    environment = LaunchConfiguration('environment').perform(context)
+    if environment not in ('sim', 'real'):
+        raise ValueError('environment must be sim or real')
+    config = Path(get_package_share_directory('tictactoe_motion')) / 'config'
+    overrides = {'environment': environment}
+    for name, value_type in OVERRIDES.items():
+        value = LaunchConfiguration(name).perform(context)
+        if value:
+            overrides[name] = ParameterValue(LaunchConfiguration(name), value_type=value_type)
+    return [Node(
+        package='tictactoe_motion', executable='motion_demo', output='screen',
+        parameters=[str(config / 'common.yaml'), str(config / f'{environment}.yaml'), overrides],
+    )]
+
+
+OVERRIDES = {'axis': str, 'distance': float, 'velocity_scaling': float, 'acceleration_scaling': float, 'poses_file': str, 'record_name': str, 'overwrite': bool}
+
 
 def generate_launch_description():
-    recording_arguments = [
-        DeclareLaunchArgument('environment', default_value='sim',
-                              description='Pose record environment: sim or real'),
-        DeclareLaunchArgument(
-            'poses_file',
-            default_value=[str(Path.home() / 'ros2_ws/src/play_tictactoe/data/poses_'),
-                           LaunchConfiguration('environment'), '.json'],
-            description='Writable persistent pose JSON file'),
-        DeclareLaunchArgument('record_name', default_value='A'),
-        DeclareLaunchArgument('overwrite', default_value='false'),
-    ]
-    axis_argument = DeclareLaunchArgument(
-        'axis',
-        default_value='x',
-        description='Movement axis in base_link: x, y, or z'
-    )
-
-    distance_argument = DeclareLaunchArgument(
-        'distance',
-        default_value='0.0',
-        description='Signed movement distance in meters'
-    )
-
-    velocity_scaling_argument = DeclareLaunchArgument(
-        'velocity_scaling',
-        default_value='0.1',
-        description='Joint velocity scaling factor in (0, 1]'
-    )
-
-    acceleration_scaling_argument = DeclareLaunchArgument(
-        'acceleration_scaling',
-        default_value='0.1',
-        description='Joint acceleration scaling factor in (0, 1]'
-    )
-
-    planner_node = Node(
-        package='tictactoe_motion',
-        executable='motion_demo',
-        output='screen',
-        parameters=[{
-            'environment': ParameterValue(LaunchConfiguration('environment'), value_type=str),
-            'poses_file': ParameterValue(LaunchConfiguration('poses_file'), value_type=str),
-            'record_name': ParameterValue(LaunchConfiguration('record_name'), value_type=str),
-            'overwrite': ParameterValue(LaunchConfiguration('overwrite'), value_type=bool),
-            'axis': LaunchConfiguration('axis'),
-            'distance': ParameterValue(
-                LaunchConfiguration('distance'),
-                value_type=float
-            ),
-            'velocity_scaling': ParameterValue(
-                LaunchConfiguration('velocity_scaling'),
-                value_type=float
-            ),
-            'acceleration_scaling': ParameterValue(
-                LaunchConfiguration('acceleration_scaling'),
-                value_type=float
-            ),
-        }]
-    )
-
+    """! @brief Start the demo with real defaults; startup never commands robot motion."""
     return LaunchDescription([
-        *recording_arguments,
-        axis_argument,
-        distance_argument,
-        velocity_scaling_argument,
-        acceleration_scaling_argument,
-        planner_node
+        DeclareLaunchArgument('environment', default_value='real', choices=['sim', 'real']),
+        *[DeclareLaunchArgument(name, default_value='',
+                               description='Optional override of the selected YAML value')
+          for name in OVERRIDES],
+        OpaqueFunction(function=_start_node),
     ])

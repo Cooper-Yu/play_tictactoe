@@ -18,13 +18,14 @@ class TrajectoryExecutor:
 
     def __init__(self, node):
         self.node = node
+        self.settings = node.settings
         self.is_executing = False
         self.last_comparison = None
         self.target_joint_positions = None
         self.target_record_name = None
         self.on_verification = None
         self.execute_client = ActionClient(
-            self.node, ExecuteTrajectory, "/execute_trajectory"
+            self.node, ExecuteTrajectory, self.settings["execute_action_name"]
         )
 
     def execution_goal_response_callback(self, future):
@@ -85,8 +86,8 @@ class TrajectoryExecutor:
         self.last_settle_sequence = self.node.joint_state_sequence
         self.previous_settle_positions = None
         self.stable_sample_count = 0
-        self.settle_deadline = time.monotonic() + 5.0
-        self.settle_timer = self.node.create_timer(0.1, self.check_settled_state)
+        self.settle_deadline = time.monotonic() + self.settings["settle_timeout"]
+        self.settle_timer = self.node.create_timer(self.settings["settle_period"], self.check_settled_state)
 
     def check_settled_state(self):
         if time.monotonic() >= self.settle_deadline:
@@ -126,15 +127,15 @@ class TrajectoryExecutor:
         )
         self.previous_settle_positions = positions
 
-        if max_change <= 0.0001:
+        if max_change <= self.settings["settle_joint_tolerance"]:
             self.stable_sample_count += 1
         else:
             self.stable_sample_count = 0
 
-        if self.stable_sample_count < 3:
+        if self.stable_sample_count < self.settings["settle_samples"]:
             return
 
-        if self.stable_sample_count == 3:
+        if self.stable_sample_count == self.settings["settle_samples"]:
             self.settled_joint_stamp = self.node.current_joint_state.header.stamp
 
         actual_transform = self.node.get_current_pose()
@@ -204,9 +205,9 @@ class TrajectoryExecutor:
             }
             max_error = max(joint_errors.values())
             passed = (
-                max_error <= 0.001
-                and position_error <= 0.0003
-                and angle_error <= 0.003
+                max_error <= self.settings["return_joint_tolerance"]
+                and position_error <= self.settings["return_position_tolerance"]
+                and angle_error <= self.settings["return_orientation_tolerance"]
             )
             self.last_comparison.update(
                 joint_errors_rad=joint_errors,
@@ -276,14 +277,14 @@ class TrajectoryExecutor:
                 self.node.get_logger().warning(f"Missing joint state: {name}")
                 return False
             start_error = abs(current_positions[name] - planned_start)
-            if start_error > 0.01:
+            if start_error > self.settings["execution_start_tolerance"]:
                 self.node.get_logger().warning(
                     f"Joint {name} moved since planning: "
                     f"error={start_error:.6f} rad; replan required"
                 )
                 return False
 
-        if not self.execute_client.wait_for_server(timeout_sec=5.0):
+        if not self.execute_client.wait_for_server(timeout_sec=self.settings["action_server_timeout"]):
             self.node.get_logger().warning("Trajectory execution server unavailable")
             return False
 

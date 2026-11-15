@@ -1,0 +1,5 @@
+image_raw:
+  ros__parameters:
+    environment: real
+    use_sim_time: false
+    camera_topic: /camera/D435/color/image_raw

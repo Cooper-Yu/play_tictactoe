@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+from glob import glob
+from pathlib import Path
 
 package_name = 'tictactoe_motion'
 
@@ -10,7 +12,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/motion_demo.launch.py']),
+        ('share/' + package_name + '/launch', [path for path in glob('launch/*.launch.py') if Path(path).is_file()]),
+        ('share/' + package_name + '/config', glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

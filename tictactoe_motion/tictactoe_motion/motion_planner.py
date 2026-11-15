@@ -14,11 +14,13 @@ from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 from tictactoe_motion.trajectory_executor import TrajectoryExecutor
+from tictactoe_motion.configuration import declare_settings
 
 
 class MotionPlanner(Node):
     def __init__(self):
         super().__init__("motion_planner")
+        self.settings = declare_settings(self)
         self.current_joint_state = None
         self.planned_trajectory = None
         self.planned_target_pose = None
@@ -28,12 +30,12 @@ class MotionPlanner(Node):
         self.is_recording = False
         self.last_joint_state_received = None
         self.joint_state_subscription = self.create_subscription(
-            JointState, "/joint_states", self.joint_state_callback, 10
+            JointState, self.settings["joint_states_topic"], self.joint_state_callback, 10
         )
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.move_client = ActionClient(self, MoveGroup, "/move_action")
+        self.move_client = ActionClient(self, MoveGroup, self.settings["move_action_name"])
         self.trajectory_executor = TrajectoryExecutor(self)
 
         self.declare_parameter("axis", "x")
@@ -47,8 +49,10 @@ class MotionPlanner(Node):
         self.joint_state_sequence += 1
         self.last_joint_state_received = time.monotonic()
 
-    def feedback_is_fresh(self, max_age=1.0):
+    def feedback_is_fresh(self, max_age=None):
         """! @brief Check reception age using the monotonic clock, not ROS timestamps."""
+        if max_age is None:
+            max_age = self.settings["feedback_max_age"]
         return (
             self.current_joint_state is not None
             and self.last_joint_state_received is not None
@@ -107,11 +111,11 @@ class MotionPlanner(Node):
             self.get_logger().warning("acceleration_scaling must be in (0, 1]")
             return None
 
-        goal.request.group_name = "arm"
-        goal.request.allowed_planning_time = 5.0
+        goal.request.group_name = self.settings["planning_group"]
+        goal.request.allowed_planning_time = self.settings["planning_time"]
         goal.request.max_velocity_scaling_factor = velocity_scaling
         goal.request.max_acceleration_scaling_factor = acceleration_scaling
-        goal.request.num_planning_attempts = 1
+        goal.request.num_planning_attempts = self.settings["planning_attempts"]
 
         goal.request.start_state.joint_state = current_joint_state
         goal.request.start_state.is_diff = True
@@ -123,7 +127,7 @@ class MotionPlanner(Node):
 
         region = SolidPrimitive()
         region.type = SolidPrimitive.SPHERE
-        region.dimensions = [0.0001]
+        region.dimensions = [self.settings["position_tolerance"]]
 
         region_pose = Pose()
         region_pose.position = target_pose.position
@@ -137,9 +141,9 @@ class MotionPlanner(Node):
         orientation_constraint.link_name = "link6"
         orientation_constraint.orientation = target_pose.orientation
 
-        orientation_constraint.absolute_x_axis_tolerance = 0.01
-        orientation_constraint.absolute_y_axis_tolerance = 0.01
-        orientation_constraint.absolute_z_axis_tolerance = 0.01
+        orientation_constraint.absolute_x_axis_tolerance = self.settings["orientation_tolerance"]
+        orientation_constraint.absolute_y_axis_tolerance = self.settings["orientation_tolerance"]
+        orientation_constraint.absolute_z_axis_tolerance = self.settings["orientation_tolerance"]
         orientation_constraint.weight = 1.0
 
         target_constraints = Constraints()
@@ -176,12 +180,12 @@ class MotionPlanner(Node):
             constraint = JointConstraint()
             constraint.joint_name = name
             constraint.position = float(joint_positions[name])
-            constraint.tolerance_above = 0.0001
-            constraint.tolerance_below = 0.0001
+            constraint.tolerance_above = self.settings["joint_goal_tolerance"]
+            constraint.tolerance_below = self.settings["joint_goal_tolerance"]
             constraint.weight = 1.0
             constraints.joint_constraints.append(constraint)
         goal.request.goal_constraints = [constraints]
-        if not self.move_client.wait_for_server(timeout_sec=5.0):
+        if not self.move_client.wait_for_server(timeout_sec=self.settings["action_server_timeout"]):
             self.get_logger().warning("MoveIt action server unavailable")
             return False
         self.planned_target_pose = copy.deepcopy(target_pose)
@@ -227,7 +231,7 @@ class MotionPlanner(Node):
         goal = self.build_planning_goal(target_pose, self.current_joint_state)
         if goal is None:
             return False
-        if not self.move_client.wait_for_server(timeout_sec=5.0):
+        if not self.move_client.wait_for_server(timeout_sec=self.settings["action_server_timeout"]):
             self.get_logger().warning("MoveIt action server unavailable")
             return False
 

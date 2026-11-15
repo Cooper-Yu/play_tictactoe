@@ -1,0 +1,6 @@
+# These thresholds retain the tested demo defaults; real hardware still needs validation.
+motion_planner:
+  ros__parameters:
+    environment: sim
+    use_sim_time: true
+    poses_file: ~/ros2_ws/src/play_tictactoe/data/poses_sim.json

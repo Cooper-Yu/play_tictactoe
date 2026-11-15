@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-def show_comparison(raw_image, enhanced_image):
+def show_comparison(raw_image, enhanced_image, window_name="Raw | Enhanced"):
     target_height, target_width = raw_image.shape[:2]
     source_height, source_width = enhanced_image.shape[:2]
     scale = min(target_width / source_width, target_height / source_height
@@ -20,5 +20,5 @@ def show_comparison(raw_image, enhanced_image):
     offset_y:offset_y + resized_height,
     offset_x:offset_x + resized_width] = resize_image
     comparison_image = np.hstack((raw_image, display_image))
-    cv2.imshow("Raw | Enhanced", comparison_image)
+    cv2.imshow(window_name, comparison_image)
     cv2.waitKey(1)

@@ -1,0 +1,5 @@
+image_raw:
+  ros__parameters:
+    environment: sim
+    use_sim_time: true
+    camera_topic: /camera1/image_raw

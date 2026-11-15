@@ -20,7 +20,7 @@ from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
 @pytest.fixture
 def demo(tmp_path):
     path = tmp_path / "poses_sim.json"
-    rclpy.init(args=["--ros-args", "-p", f"poses_file:={path}"])
+    rclpy.init(args=["--ros-args", "-p", f"poses_file:={path}", "-p", "environment:=sim"])
     node = MotionPlanner()
     recording = PoseRecordingDemo(node)
     try:

@@ -27,7 +27,8 @@ class PoseRecordingDemo:
 
     def __init__(self, node):
         self.node = node
-        node.declare_parameter("environment", "sim", ParameterDescriptor(read_only=True))
+        self.settings = node.settings
+        node.declare_parameter("environment", "real", ParameterDescriptor(read_only=True))
         self.environment = node.get_parameter("environment").value
         if self.environment not in ("sim", "real"):
             raise ValueError("Environment must be 'sim' or 'real'")
@@ -110,14 +111,14 @@ class PoseRecordingDemo:
                 raise ValueError(f"Record already exists: {name}")
             self.capture_name = name
             self.capture_overwrite = overwrite
-            self.capture_deadline = time.monotonic() + 5.0
+            self.capture_deadline = time.monotonic() + self.settings["recording_timeout"]
             self.last_sequence = self.node.joint_state_sequence
             self.last_stamp = None
             self.previous_positions = None
             self.stable_count = 0
             self.snapshot = None
             self.node.is_recording = True
-            self.capture_timer = self.node.create_timer(0.1, self._capture_tick)
+            self.capture_timer = self.node.create_timer(self.settings["settle_period"], self._capture_tick)
             self._publish("record", "waiting", "Waiting for settled feedback", name=name)
             response.success = True
             response.message = "Recording requested; final result on /pose_recording/status"
@@ -155,13 +156,13 @@ class PoseRecordingDemo:
             raise ValueError("Joint feedback must be finite")
         if self.previous_positions is not None:
             change = max(abs(a - b) for a, b in zip(values, self.previous_positions))
-            if change <= 0.0001:
+            if change <= self.settings["settle_joint_tolerance"]:
                 self.stable_count += 1
             else:
                 self.stable_count = 0
                 self.snapshot = None
         self.previous_positions = values
-        if self.stable_count >= 3 and self.snapshot is None:
+        if self.stable_count >= self.settings["settle_samples"] and self.snapshot is None:
             self.snapshot = copy.deepcopy(state)
 
     def _capture_tick(self):

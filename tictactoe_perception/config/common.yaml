@@ -1,0 +1,8 @@
+# Output is always BGR uint8 for OpenCV; brightness slider maps 0..510 to -255..255.
+image_raw:
+  ros__parameters:
+    camera_reliability: best_effort
+    camera_queue_depth: 10
+    initial_brightness_beta: 0
+    window_name: Raw | Enhanced
+    log_images: false

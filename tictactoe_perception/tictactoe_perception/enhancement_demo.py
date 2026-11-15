@@ -10,10 +10,14 @@ class EnhancementDemo:
     @brief Manage brightness controls, image enhancement, and comparison display.
     """
 
-    def __init__(self):
+    def __init__(self, node):
+        self.window_name = node.settings['window_name']
         self.image_enhancer = ImageEnhancer()
-        cv2.namedWindow("Raw | Enhanced", cv2.WINDOW_NORMAL)
-        cv2.createTrackbar("Brightness", "Raw | Enhanced", 255, 510, lambda value: None)
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        cv2.createTrackbar(
+            "Brightness", self.window_name, node.settings['initial_brightness_beta'] + 255,
+            510, lambda value: None,
+        )
         self.roi = None
 
         self.is_selecting = False
@@ -23,11 +27,11 @@ class EnhancementDemo:
         self.image_width = 0
         self.image_height = 0
 
-        cv2.setMouseCallback("Raw | Enhanced", self.on_mouse)
+        cv2.setMouseCallback(self.window_name, self.on_mouse)
 
     def process_image(self, raw_image):
         self.image_height, self.image_width = raw_image.shape[:2]
-        slider_value = cv2.getTrackbarPos("Brightness", "Raw | Enhanced")
+        slider_value = cv2.getTrackbarPos("Brightness", self.window_name)
         beta = slider_value - 255
         enhanced_image = self.image_enhancer.enhance(raw_image, beta, self.roi)
         preview_image = raw_image.copy()
@@ -35,7 +39,7 @@ class EnhancementDemo:
             cv2.rectangle(
                 preview_image, self.selection_start, self.selection_end, (0, 255, 0), 1
             )
-        show_comparison(preview_image, enhanced_image)
+        show_comparison(preview_image, enhanced_image, self.window_name)
 
     def on_mouse(self, event, x, y, flags, param):
         if (
@@ -67,13 +71,15 @@ class EnhancementDemo:
 
 def main(args=None):
     rclpy.init(args=args)
-    demo = EnhancementDemo()
-    node = ImageRaw(demo.process_image)
+    node = ImageRaw(None)
     try:
+        demo = EnhancementDemo(node)
+        node.on_image = demo.process_image
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
+        cv2.destroyAllWindows()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
