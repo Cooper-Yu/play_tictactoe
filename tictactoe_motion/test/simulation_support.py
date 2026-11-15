@@ -75,10 +75,15 @@ class SimulationHarness:
         assert not any('zenoh' in n or 'piper_ctrl' in n for n in names), names
         service = self.client.create_client(ListControllers, '/controller_manager/list_controllers')
         self.until(service.service_is_ready)
-        response = self.result(service.call_async(ListControllers.Request()))
-        states = {controller.name: controller.state for controller in response.controller}
-        assert states.get('arm_controller') == 'active', states
-        return states
+        deadline = time.monotonic() + 30.0
+        while True:
+            response = self.result(service.call_async(ListControllers.Request()))
+            states = {controller.name: controller.state for controller in response.controller}
+            if states.get('arm_controller') == 'active':
+                return states
+            assert time.monotonic() < deadline, ('arm controller activation timed out', states)
+            pause = time.monotonic() + 0.2
+            self.until(lambda: time.monotonic() >= pause, 1.0)
 
     def parameters(self, **values):
         results = self.node.set_parameters([Parameter(name, value=value) for name, value in values.items()])
