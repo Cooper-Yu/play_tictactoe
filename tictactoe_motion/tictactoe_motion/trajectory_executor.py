@@ -23,18 +23,41 @@ class TrajectoryExecutor:
         )
 
     def execution_goal_response_callback(self, future):
-        goal_handle = future.result()
+        try:
+            goal_handle = future.result()
+        except Exception as error:
+            self.node.get_logger().error(
+                f"Failed to receive execution goal response: {error}; "
+                "execution remains blocked"
+            )
+            return
         if not goal_handle.accepted:
             self.is_executing = False
             self.node.get_logger().warning("Execution goal rejected")
             return
 
         self.node.get_logger().info("Execution goal accepted")
-        self.execute_result_future = goal_handle.get_result_async()
-        self.execute_result_future.add_done_callback(self.execution_result_callback)
+        try:
+            self.execute_result_future = goal_handle.get_result_async()
+            self.execute_result_future.add_done_callback(
+                self.execution_result_callback
+            )
+        except Exception as error:
+            self.node.get_logger().error(
+                f"Failed to request execution result: {error}; "
+                "execution remains blocked"
+            )
+            return
 
     def execution_result_callback(self, future):
-        response = future.result()
+        try:
+            response = future.result()
+        except Exception as error:
+            self.node.get_logger().error(
+                f"Failed to receive execution result: {error}; "
+                "execution remains blocked"
+            )
+            return
         status = response.status
         result = response.result
         if status == GoalStatus.STATUS_CANCELED:
