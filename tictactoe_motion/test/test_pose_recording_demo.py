@@ -71,6 +71,23 @@ def test_capture_persists_time_matched_snapshot(demo):
     assert recording.capture_timer is None
 
 
+def test_optional_observer_gate_waits_for_new_settled_snapshot(demo):
+    node, recording, path = demo
+    recording.capture_ready = lambda snapshot: snapshot.header.stamp.sec >= 6
+    assert invoke(recording.record_callback).success
+    for tick in range(1, 6):
+        feedback(node, tick)
+        recording._capture_tick()
+    assert node.is_recording
+    assert not path.exists()
+    feedback(node, 6)
+    recording._capture_tick()
+    assert not node.is_recording
+    data = json.loads(path.read_text())
+    assert data['A']['joint_state']['stamp']['sec'] == 6
+    assert data['A']['pose_stamped']['header']['stamp']['sec'] == 6
+
+
 def test_repeated_timestamp_cannot_fake_settling(demo):
     node, recording, path = demo
     assert invoke(recording.record_callback).success

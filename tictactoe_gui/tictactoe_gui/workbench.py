@@ -1,0 +1,231 @@
+"""Loopback localization workstation; ROS ownership stays in one worker thread."""
+import argparse
+import copy
+import json
+import math
+import queue
+import secrets
+import signal
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.resources import files
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+
+def enhance_frame(frame, query):
+    """! @brief Reuse the verified Python enhancer for full frames or normalized ROIs."""
+    import cv2
+    import numpy as np
+    from tictactoe_perception.image_enhancer import ImageEnhancer
+    beta = int(query['beta'][0])
+    if not -255 <= beta <= 255:
+        raise ValueError('亮度偏移应在 -255..255')
+    image = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
+    roi = None
+    if 'roi' in query:
+        values = [float(value) for value in query['roi'][0].split(',')]
+        if len(values) != 4 or not all(math.isfinite(v) and 0 <= v <= 1 for v in values):
+            raise ValueError('ROI 必须为归一化矩形')
+        x, y, w, h = values
+        if w <= 0 or h <= 0 or x+w > 1.000001 or y+h > 1.000001:
+            raise ValueError('ROI 超出图像')
+        height, width = image.shape[:2]
+        x1, y1 = int(x*width), int(y*height)
+        x2, y2 = min(width, int((x+w)*width)), min(height, int((y+h)*height))
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError('ROI 小于一个像素')
+        roi = (x1, y1, x2-x1, y2-y1)
+    enhanced = ImageEnhancer().enhance(image, beta, roi)
+    ok, encoded = cv2.imencode('.jpg', enhanced, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ok:
+        raise ValueError('图像增强失败')
+    return encoded.tobytes()
+
+
+def validate_command(data):
+    """! @brief Validate browser requests before they reach the ROS queue."""
+    kind = data.get('kind')
+    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera'):
+        raise ValueError('未知操作')
+    result = {'kind': kind}
+    if kind == 'jog':
+        axis = data.get('axis')
+        distance = data.get('distance')
+        if axis not in ('x', 'y', 'z'):
+            raise ValueError('方向必须是 x / y / z')
+        if (isinstance(distance, bool) or not isinstance(distance, (int, float))
+                or not math.isfinite(distance) or not 0 < abs(distance) <= .02):
+            raise ValueError('单步距离必须在 0–20 mm 内')
+        result.update(axis=axis, distance=float(distance))
+    if kind in ('jog', 'preset', 'return'):
+        speed = data.get('speed', .1)
+        if (isinstance(speed, bool) or not isinstance(speed, (int, float))
+                or not math.isfinite(speed) or not .01 <= speed <= .3):
+            raise ValueError('速度缩放范围为 1–30%')
+        result['speed'] = float(speed)
+    if kind in ('preset', 'record', 'return', 'delete'):
+        name = data.get('name')
+        if not isinstance(name, str) or not name.strip() or len(name) > 80:
+            raise ValueError('记录名称必须为 1–80 个字符')
+        result['name'] = name.strip()
+        if kind == 'preset' and name not in ('zero', 'clear', 'clear2'):
+            raise ValueError('未知预设位置')
+        if kind == 'record':
+            if not isinstance(data.get('overwrite', False), bool):
+                raise ValueError('overwrite 必须为布尔值')
+            result['overwrite'] = data.get('overwrite', False)
+    if kind == 'camera':
+        topic = data.get('topic')
+        if not isinstance(topic, str) or not topic.startswith('/') or len(topic) > 256:
+            raise ValueError('无效相机 topic')
+        result['topic'] = topic
+    return result
+
+
+class WorkbenchSession:
+    """! @brief Share immutable snapshots and a bounded command queue with HTTP."""
+    def __init__(self, output):
+        self.output = Path(output).expanduser().resolve()
+        self.output.mkdir(parents=True, exist_ok=True)
+        self.lock = threading.Lock()
+        self.jobs = queue.Queue(maxsize=1)
+        self.stop = threading.Event()
+        self.shutdown = threading.Event()
+        self.token = secrets.token_urlsafe(24)
+        self.frames = {}
+        self.state = dict(state='connecting', message='正在连接仿真', busy=False,
+                          environment='sim', pose=None, joints={}, fresh=False,
+                          camera={}, topics=[], records={}, plan=None, comparison=None, job=0)
+        self.state['storage'] = str(self.output)
+
+    def update(self, **values):
+        with self.lock:
+            self.state.update(values)
+
+    def status(self):
+        with self.lock:
+            return copy.deepcopy(self.state)
+
+    def submit(self, data):
+        command = validate_command(data)
+        with self.lock:
+            if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked', 'stopping'):
+                raise RuntimeError('尚未就绪或已有操作正在进行')
+            if command['kind'] == 'execute' and not self.state['plan']:
+                raise RuntimeError('没有可执行的规划')
+            self.stop.clear()
+            command['job'] = self.state['job'] + 1
+            self.state.update(busy=True, state='queued', message='操作已提交', job=command['job'])
+            self.jobs.put_nowait(command)
+        return command['job']
+
+    def request_stop(self):
+        self.stop.set()
+        self.update(state='stopping', message='正在停止并清除待执行规划')
+
+    def frame(self, key):
+        with self.lock:
+            return self.frames.get(key)
+
+
+def make_handler(session):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def send(self, status, data, content_type='application/json; charset=utf-8'):
+            body = data if isinstance(data, bytes) else json.dumps(data, ensure_ascii=False, allow_nan=False).encode()
+            self.send_response(status)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            if url.path == '/api/status':
+                return self.send(200, session.status())
+            if url.path == '/api/config':
+                return self.send(200, {'token': session.token, 'environment': 'sim'})
+            if url.path == '/api/frame':
+                frame = session.frame('live')
+                if frame and 'beta' in parse_qs(url.query):
+                    try:
+                        frame = enhance_frame(frame, parse_qs(url.query))
+                    except ValueError as error:
+                        return self.send(400, {'error': str(error)})
+                return self.send(200, frame, 'image/jpeg') if frame else self.send(503, {'error': '尚无图像'})
+            if url.path == '/api/snapshot':
+                name = parse_qs(url.query).get('name', [''])[0]
+                frame = session.frame('record:'+name)
+                return self.send(200, frame, 'image/jpeg') if frame else self.send(404, {'error': '无关联截图'})
+            static = {'/': ('workbench.html', 'text/html; charset=utf-8'),
+                      '/workbench.js': ('workbench.js', 'text/javascript; charset=utf-8'),
+                      '/workbench.css': ('workbench.css', 'text/css; charset=utf-8')}
+            if url.path not in static:
+                return self.send(404, {'error': 'Not found'})
+            name, mime = static[url.path]
+            self.send(200, files('tictactoe_gui').joinpath('web', name).read_bytes(), mime)
+
+        def do_POST(self):
+            expected = 'http://' + self.headers.get('Host', '')
+            if (self.headers.get('X-Workbench-Token') != session.token
+                    or self.headers.get('Origin', expected) != expected
+                    or urlparse(expected).hostname not in ('localhost', '127.0.0.1')):
+                return self.send(403, {'error': '请求来源无效'})
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 4096:
+                    raise ValueError('请求体过大或为空')
+                data = json.loads(self.rfile.read(size))
+                if not isinstance(data, dict):
+                    raise ValueError('请求必须为对象')
+                if self.path == '/api/stop':
+                    session.request_stop()
+                    return self.send(202, {'accepted': True})
+                if self.path != '/api/command':
+                    return self.send(404, {'error': 'Not found'})
+                self.send(202, {'accepted': True, 'job': session.submit(data)})
+            except (ValueError, TypeError) as error:
+                self.send(400, {'error': str(error)})
+            except (RuntimeError, queue.Full) as error:
+                self.send(409, {'error': str(error)})
+    return Handler
+
+
+def main():
+    from rclpy.utilities import remove_ros_args
+    from tictactoe_gui.workbench_worker import workbench_worker
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args(remove_ros_args()[1:])
+    session = WorkbenchSession(args.output)
+    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(session))
+    def run():
+        try:
+            workbench_worker(session)
+        except BaseException as error:
+            session.update(state='offline', busy=False, message=str(error))
+    thread = threading.Thread(target=run, name='workbench-ros', daemon=True)
+    thread.start()
+    def halt(signum, frame):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGINT, halt)
+    signal.signal(signal.SIGTERM, halt)
+    print(f'LOCALIZATION_GUI http://localhost:{args.port} OUTPUT {session.output}', flush=True)
+    try:
+        server.serve_forever(poll_interval=.1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        session.stop.set()
+        session.shutdown.set()
+        thread.join(timeout=15)
+        server.server_close()
+        if thread.is_alive():
+            raise RuntimeError('ROS worker did not confirm shutdown')

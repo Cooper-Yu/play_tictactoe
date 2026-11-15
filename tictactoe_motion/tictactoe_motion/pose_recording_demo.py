@@ -45,6 +45,7 @@ class PoseRecordingDemo:
         self.recorder = PoseRecorder(node.get_parameter("poses_file").value)
         self.loaded_pose = None
         self.capture_timer = None
+        self.capture_ready = None
         self.last_status = {}
         node.trajectory_executor.on_verification = self._return_verified
         self.status_publisher = node.create_publisher(
@@ -177,6 +178,12 @@ class PoseRecordingDemo:
                 return
             self._observe_feedback()
             if self.snapshot is None:
+                return
+            # An optional observer (for example a camera) may require a matching
+            # timestamp before persistence. Retry with newer settled feedback;
+            # do not leave a half-complete record while waiting for that observer.
+            if self.capture_ready is not None and not self.capture_ready(self.snapshot):
+                self.snapshot = None
                 return
             try:
                 transform = self.node.tf_buffer.lookup_transform(
