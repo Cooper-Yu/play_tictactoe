@@ -147,3 +147,17 @@ that pose, descends 1 cm, returns to the achieved upper pose, then returns to
 retains the clear preset's orientation. Descent distance is limited to 5 cm.
 The demo refuses non-simulation graphs and only runs as an explicit command; it
 does not add an automatic startup movement, ROS sequence service or GUI button.
+
+### X/O with explicit Z pen motion (simulation demo)
+
+`StrokeDrawing` separates X into two strokes: lower, draw, lift, transfer at the
+saved upper height, lower, draw, lift. O lowers once, traces a closed circle,
+then lifts. Z is along `base_link`; link6 orientation is preserved. A failed or
+cancelled stage prevents all subsequent motion requests; there is no automatic
+recovery motion or physical-contact detection.
+
+With the existing Gazebo and MoveIt running, use `tictactoe_motion/test/verify_stroke_drawing.py`
+with `--output <temporary-directory>` and the common/sim ROS parameter files.
+It approaches clear FK +3 cm Z, draws a 2 cm X and 1 cm radius O at 1 cm
+below that upper plane, then returns to zero. These are airborne simulation
+motions. This script is not a real-robot launch or a new ROS service.

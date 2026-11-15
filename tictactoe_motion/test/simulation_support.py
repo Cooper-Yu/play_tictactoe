@@ -156,6 +156,21 @@ class SimulationHarness:
         self.guard()
         return self.verified_pose_result(self.execute())
 
+
+    def path(self, poses):
+        """Execute an XY stroke at the achieved drawing height and orientation."""
+        self.check_motion_guard()
+        start = self.current_pose()
+        path = [copy.deepcopy(start)]
+        for pose in poses[1:]:
+            target = copy.deepcopy(start)
+            target.position.x, target.position.y = pose.position.x, pose.position.y
+            path.append(target)
+        assert self.node.cartesian_planner.request_path(path)
+        self.until(lambda: not self.node.is_planning)
+        self.guard()
+        return self.verified_pose_result(self.execute())
+
     def guard(self, limit=0.5):
         trajectory = self.node.planned_trajectory
         assert trajectory is not None, 'No accepted plan'
