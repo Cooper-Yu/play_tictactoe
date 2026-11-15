@@ -55,7 +55,11 @@ class StrokeDrawing:
             self.results.append({'stage': name, 'result': copy.deepcopy(result)})
 
         for i, stroke in enumerate(self.strokes, 1):
-            if i > 1:
+            previous_end = self.strokes[i-2][-1].position if i > 1 else None
+            same_start = previous_end is not None and all(
+                abs(getattr(previous_end, axis)-getattr(stroke[0].position, axis)) < 1e-9
+                for axis in ('x', 'y', 'z'))
+            if i > 1 and not same_start:
                 transfer = copy.deepcopy(stroke[0].position)
                 transfer.z = upper.position.z
                 step(f'{i}_transfer', lambda: driver.linear(transfer))
