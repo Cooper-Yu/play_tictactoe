@@ -115,3 +115,35 @@ the course loader strands an already loaded arm in `unconfigured` after its CLI
 response timeout, a simulation-only helper waits a grace period, configures it,
 then activates it. It requires a session-tagged gzserver and rejects hardware
 bridge nodes. It sends no trajectory goals; unknown service results fail closed.
+
+### Zero, coordinate, descent, retraction, zero
+
+`PoseCycle` coordinates five verified driver primitives. The simulation driver
+plans and executes each stage, waits for settling and checks the result before
+continuing. A failure or software stop aborts the sequence without issuing a
+recovery movement. Retraction uses the saved achieved upper position, rather than
+adding distance to a potentially imperfect lower measurement.
+
+`MotionPlanner.request_pose_plan()` supplies absolute base_link pose planning;
+`CartesianPlanner.request_linear_position()` supplies a straight XYZ translation
+while keeping the achieved orientation. Existing XY/X/O entry points still use
+their fixed-height checks.
+
+For the simulation demo, source the workspace/ROS environment and select its domain,
+then run from the repository root against the already running simulator/MoveIt:
+
+```bash
+python3 tictactoe_motion/test/verify_pose_cycle.py --output /tmp/pose-cycle-check \
+  --distance 0.01 --clearance 0.03 --ros-args \
+  --params-file tictactoe_motion/config/common.yaml \
+  --params-file tictactoe_motion/config/sim.yaml \
+  -p poses_file:=/tmp/pose-cycle-check/poses_sim.json -p state_log_period:=0.0
+```
+
+The default target is computed from the currently running MoveIt SRDF `clear`
+configuration by FK, then raised 3 cm in base_link Z. It visits `zero`, moves to
+that pose, descends 1 cm, returns to the achieved upper pose, then returns to
+`zero`. `--target X Y Z` instead supplies an absolute target in meters; the demo
+retains the clear preset's orientation. Descent distance is limited to 5 cm.
+The demo refuses non-simulation graphs and only runs as an explicit command; it
+does not add an automatic startup movement, ROS sequence service or GUI button.

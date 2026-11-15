@@ -134,7 +134,20 @@ class CartesianPlanner:
                 self.node.invalidate_plan()
             return False
 
-    def request_path(self, poses):
+    def request_linear_position(self, target_position):
+        """! @brief Plan a base_link XYZ line while preserving the achieved orientation."""
+        try:
+            start = self.start_pose()
+            target = copy.deepcopy(start)
+            target.position = copy.deepcopy(target_position)
+            return self.request_path([start, target], fixed_height=False)
+        except (ValueError, TypeError) as error:
+            self.node.get_logger().warning(str(error))
+            if not self.node.is_planning and not self.node.trajectory_executor.is_executing:
+                self.node.invalidate_plan()
+            return False
+
+    def request_path(self, poses, fixed_height=True):
         node = self.node
         if node.is_planning or node.is_recording or node.trajectory_executor.is_executing:
             node.get_logger().warning('Cannot plan Cartesian path while busy')
@@ -156,8 +169,8 @@ class CartesianPlanner:
             for pose in poses:
                 if not all(math.isfinite(v) for v in xyz(pose)):
                     raise ValueError('Path position must be finite')
-                if abs(pose.position.z-start.position.z) > 1e-9 or orientation_error(pose.orientation, start.orientation) > 1e-6:
-                    raise ValueError('This planner requires fixed Z and orientation')
+                if (fixed_height and abs(pose.position.z-start.position.z) > 1e-9) or orientation_error(pose.orientation, start.orientation) > 1e-6:
+                    raise ValueError('Path violates the requested fixed height/orientation')
             length = sum(math.dist(xyz(a), xyz(b)) for a, b in zip(poses, poses[1:]))
             if not 0 < length <= self.settings['cartesian_max_length']:
                 raise ValueError('Path length exceeds configured range')

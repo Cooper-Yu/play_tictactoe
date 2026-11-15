@@ -248,35 +248,39 @@ class MotionPlanner(Node):
         return True
 
     def request_plan(self, axis, distance):
-        if getattr(self, "is_recording", False):
-            self.get_logger().warning("Cannot plan: pose recording is in progress")
+        current = self.get_current_pose()
+        if current is None:
             return False
-        if self.is_planning:
-            self.get_logger().warning("Cannot plan: planning already in progress")
-            return False
+        return self.request_pose_plan(self.calculate_target_pose(current, axis, distance))
 
-        if self.trajectory_executor.is_executing:
-            self.get_logger().warning(
-                "Cannot plan: execution or settling is in progress"
-            )
+    def request_pose_plan(self, target_pose, orientation_tolerance=None):
+        """! @brief Plan only to an absolute base_link tool pose from fresh arm feedback."""
+        if self.is_recording or self.is_planning or self.trajectory_executor.is_executing:
+            self.get_logger().warning("Cannot plan pose: another task is in progress")
             return False
-
         self.invalidate_plan()
-        if self.current_joint_state is None:
-            self.get_logger().warning("Cannot plan: joint states unavailable")
+        if not self.feedback_is_fresh():
+            self.get_logger().warning("Cannot plan pose: fresh joint states unavailable")
             return False
-        current_transform = self.get_current_pose()
-        if current_transform is None:
+        p, q = target_pose.position, target_pose.orientation
+        if not all(math.isfinite(v) for v in (p.x, p.y, p.z, q.x, q.y, q.z, q.w)) or sum(v*v for v in (q.x,q.y,q.z,q.w)) < 1e-12:
+            self.get_logger().warning("Invalid target pose")
             return False
-        target_pose = self.calculate_target_pose(current_transform, axis, distance)
-        self.planned_target_pose = target_pose
-        goal = self.build_planning_goal(target_pose, self.current_joint_state)
+        goal = self.build_planning_goal(target_pose, copy.deepcopy(self.current_joint_state))
         if goal is None:
             return False
+        if orientation_tolerance is not None:
+            if not math.isfinite(orientation_tolerance) or orientation_tolerance <= 0:
+                self.get_logger().warning("Invalid requested orientation tolerance")
+                return False
+            for constraint in goal.request.goal_constraints[0].orientation_constraints:
+                constraint.absolute_x_axis_tolerance = orientation_tolerance
+                constraint.absolute_y_axis_tolerance = orientation_tolerance
+                constraint.absolute_z_axis_tolerance = orientation_tolerance
         if not self.move_client.wait_for_server(timeout_sec=self.settings["action_server_timeout"]):
             self.get_logger().warning("MoveIt action server unavailable")
             return False
-
+        self.planned_target_pose = copy.deepcopy(target_pose)
         self.is_planning = True
         try:
             self.send_goal_future = self.move_client.send_goal_async(goal)
@@ -286,6 +290,7 @@ class MotionPlanner(Node):
             )
         except Exception as error:
             self.is_planning = False
+            self.invalidate_plan()
             self.get_logger().error(f"Failed to send planning request: {error}")
             return False
         return True

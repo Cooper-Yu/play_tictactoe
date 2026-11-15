@@ -104,7 +104,7 @@ class SimulationHarness:
         assert response.error_code.val == 1, response.error_code.val
         return response.pose_stamped[0].pose
 
-    def named(self, name):
+    def named_target(self, name):
         service = self.client.create_client(GetParameters, '/move_group/get_parameters')
         self.until(service.service_is_ready)
         request = GetParameters.Request(names=['robot_description_semantic'])
@@ -113,12 +113,40 @@ class SimulationHarness:
         assert state is not None, name
         joints = {joint.attrib['name']: float(joint.attrib['value']) for joint in state.findall('joint')}
         assert set(joints) == {f'joint{i}' for i in range(1, 7)}
-        assert self.node.request_joint_plan(joints, self.fk(joints), name)
+        return joints, self.fk(joints)
+
+    def named(self, name):
+        joints, target = self.named_target(name)
+        assert self.node.request_joint_plan(joints, target, name)
         self.until(lambda: not self.node.is_planning)
         self.guard(2.0)
         result = self.execute()
         assert result.get('passed'), result
         return result
+
+    def current_pose(self):
+        return self.node.cartesian_planner.start_pose()
+
+    def verified_pose_result(self, result):
+        result['passed'] = (
+            result.get('passed', True)
+            and result.get('position_error_m', float('inf')) <= self.node.settings['return_position_tolerance']
+            and result.get('orientation_error_rad', float('inf')) <= self.node.settings['return_orientation_tolerance']
+        )
+        assert result['passed'], result
+        return result
+
+    def pose(self, target):
+        assert self.node.request_pose_plan(target, orientation_tolerance=.001)
+        self.until(lambda: not self.node.is_planning)
+        self.guard(2.0)
+        return self.verified_pose_result(self.execute())
+
+    def linear(self, target_position):
+        assert self.node.cartesian_planner.request_linear_position(target_position)
+        self.until(lambda: not self.node.is_planning)
+        self.guard()
+        return self.verified_pose_result(self.execute())
 
     def guard(self, limit=0.5):
         trajectory = self.node.planned_trajectory
