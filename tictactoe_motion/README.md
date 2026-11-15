@@ -210,3 +210,22 @@ progress exceeded 2mm, MoveIt returned ABORTED/PREEMPTED, joint feedback settled
 and replay of the old trajectory was rejected. An explicitly replanned return
 to the saved starting joint configuration passed joint and pose checks.
 The first action-only attempt and its recovery are retained in validation records.
+
+## Clear / offset / zero / recorded return scenario
+
+`test/verify_record_roundtrip.py` tests the existing interfaces in Gazebo only:
+read the SRDF `clear` target, reach it, step X+3cm, persist B, reach `zero`, load B
+from disk, plan and execute a joint-space return, check joint/link6 errors, then
+restore `clear` and delete the temporary record. It refuses hardware graphs and
+requires a new writable output directory and a pose file beneath that directory.
+Start Gazebo and MoveIt separately in the same localhost-only ROS domain.
+
+```bash
+python3 tictactoe_motion/test/verify_record_roundtrip.py --output /tmp/ptt-roundtrip \\
+  --ros-args --params-file tictactoe_motion/config/common.yaml \\
+  --params-file tictactoe_motion/config/sim.yaml \\
+  -p poses_file:=/tmp/ptt-roundtrip/poses_sim.json -p state_log_period:=0.0
+```
+
+The acceptance helper records sampled feedback in the report. It does not add
+production clear/zero services or allow parallel RViz motion commands.
