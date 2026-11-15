@@ -17,7 +17,7 @@ class TrajectoryExecutor:
 
     def __init__(self, node):
         self.node = node
-
+        self.is_executing = False
         self.execute_client = ActionClient(
             self.node, ExecuteTrajectory, "/execute_trajectory"
         )
@@ -25,6 +25,7 @@ class TrajectoryExecutor:
     def execution_goal_response_callback(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
+            self.is_executing = False
             self.node.get_logger().warning("Execution goal rejected")
             return
 
@@ -37,12 +38,14 @@ class TrajectoryExecutor:
         status = response.status
         result = response.result
         if status == GoalStatus.STATUS_CANCELED:
+            self.is_executing = False
             self.node.get_logger().info("Execution canceled")
             return
         if (
             status != GoalStatus.STATUS_SUCCEEDED
             or result.error_code.val != MoveItErrorCodes.SUCCESS
         ):
+            self.is_executing = False
             self.node.get_logger().warning(
                 f"Execution failed: status={status}, error={result.error_code.val}"
             )
@@ -60,7 +63,10 @@ class TrajectoryExecutor:
     def check_settled_state(self):
         if time.monotonic() >= self.settle_deadline:
             self.settle_timer.cancel()
-            self.node.get_logger().warning("Timed out waiting for settled state")
+            self.node.get_logger().warning(
+                "Timed out waiting for settled state; "
+                "execution remains blocked"
+            )
             return
         if self.node.joint_state_sequence == self.last_settle_sequence:
             return
@@ -117,7 +123,10 @@ class TrajectoryExecutor:
         self.node.get_logger().info(
             "Joint feedback settled; comparing execution result"
         )
-        self.compare_execution_result(actual_transform)
+        try:
+            self.compare_execution_result(actual_transform)
+        finally:
+            self.is_executing = False
 
     def compare_execution_result(self, actual_transform):
         start = self.execution_start_transform.transform.translation
@@ -148,6 +157,16 @@ class TrajectoryExecutor:
         )
 
     def execute_planned_trajectory(self, planned_trajectory, target_pose):
+        if self.is_executing:
+            self.node.get_logger().warning(
+                "Cannot execute: execution already in progress"
+            )
+            return False
+        if self.node.is_planning:
+            self.node.get_logger().warning(
+                "Cannot execute: planning is in progress"
+            )
+            return False
         self.planned_trajectory = planned_trajectory
         self.planned_target_pose = target_pose
 
@@ -193,8 +212,14 @@ class TrajectoryExecutor:
             return False
         execute_goal = ExecuteTrajectory.Goal()
         execute_goal.trajectory = self.planned_trajectory
-        self.execute_goal_future = self.execute_client.send_goal_async(execute_goal)
-        self.execute_goal_future.add_done_callback(
-            self.execution_goal_response_callback
-        )
+        self.is_executing = True
+        try:
+            self.execute_goal_future = self.execute_client.send_goal_async(execute_goal)
+            self.execute_goal_future.add_done_callback(
+                self.execution_goal_response_callback
+            )
+        except Exception as error:
+            self.is_executing = False
+            self.node.get_logger().error(f"Failed to send execution request: {error}")
+            return False
         return True

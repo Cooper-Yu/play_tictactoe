@@ -133,6 +133,12 @@ class MotionPlanner(Node):
             self.get_logger().warning("Cannot plan: planning already in progress")
             return False
 
+        if self.trajectory_executor.is_executing:
+            self.get_logger().warning(
+                "Cannot plan: execution or settling is in progress"
+            )
+            return False
+
         self.planned_trajectory = None
         self.planned_target_pose = None
         if self.current_joint_state is None:
@@ -153,14 +159,10 @@ class MotionPlanner(Node):
         self.is_planning = True
         try:
             self.send_goal_future = self.move_client.send_goal_async(goal)
-            self.send_goal_future.add_done_callback(
-                self.goal_response_callback
-            )
+            self.send_goal_future.add_done_callback(self.goal_response_callback)
         except Exception as error:
             self.is_planning = False
-            self.get_logger().error(
-                f"Failed to send planning request: {error}"
-            )
+            self.get_logger().error(f"Failed to send planning request: {error}")
             return False
         return True
 
@@ -180,14 +182,10 @@ class MotionPlanner(Node):
         self.get_logger().info("Planning goal accepted")
         try:
             self.result_future = goal_handle.get_result_async()
-            self.result_future.add_done_callback(
-                self.planning_result_callback
-            )
+            self.result_future.add_done_callback(self.planning_result_callback)
         except Exception as error:
             self.is_planning = False
-            self.get_logger().error(
-                f"Failed to request planning result: {error}"
-            )
+            self.get_logger().error(f"Failed to request planning result: {error}")
             return
 
     def planning_result_callback(self, future):
@@ -195,9 +193,7 @@ class MotionPlanner(Node):
         try:
             response = future.result()
         except Exception as error:
-            self.get_logger().error(
-                f"Failed to receive planning result: {error}"
-            )
+            self.get_logger().error(f"Failed to receive planning result: {error}")
             return
 
         status = response.status
