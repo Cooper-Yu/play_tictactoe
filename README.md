@@ -161,3 +161,39 @@ with `--output <temporary-directory>` and the common/sim ROS parameter files.
 It approaches clear FK +3 cm Z, draws a 2 cm X and 1 cm radius O at 1 cm
 below that upper plane, then returns to zero. These are airborne simulation
 motions. This script is not a real-robot launch or a new ROS service.
+
+### Bounded board canvas and virtual simulation ink
+
+`config/board_sim.yaml` contains derived geometry from the installed course
+world, SDF and material-separated board mesh. It is simulation-only and is not a
+ROS parameter file. `tools/extract_sim_board.py` reproduces it from `--share`.
+The black screen has rounded corners; the usable rectangle is inset by 5 mm.
+The white Reset visual has no physical button sensor in the supplied model.
+
+`BoardCanvas` maps normalized `[0,1]` drawing coordinates into a 0.5 mm implicit
+grid. Outside inputs are rejected before snapping. `snap=False` retains curve
+samples for circles/arcs: the grid is a positioning aid, not a requirement that
+curves become staircase paths. Each stroke is limited to 500 waypoints and
+0.3 m; split longer drawings at explicit pen-up boundaries. Camera orientation
+is not used by this model-coordinate mapping.
+
+`CanvasDrawing` approaches, lowers, traces and lifts each separately validated
+stroke. The simulation uses link6 Z=0.22 m while raised and 0.21 m while drawing.
+An earlier Z=0.25 m target at (0.1712,0.0283) required joint5 about1.251 rad,
+beyond its configured1.22 rad limit; live limits were not relaxed. A 5x5 IK
+sample at Z=0.22/0.21 m succeeded, but every requested path still needs planning
+and verification. Geometry inside the board does not prove general reachability.
+
+`SimulatedBoard` projects actual executed link6 XY samples onto the screen and
+spawns one visual-only ribbon mesh per completed stroke. It does not render a
+predefined X/O icon, infer pen contact, or calibrate a physical pen TCP. In this
+first version ink appears after each stroke is verified, not continuously.
+A downward virtual Reset gesture over the extracted button clears only this
+renderer's owned ink models. Tests remove their ink entities and generated files.
+The drawing/reference height is deliberately separate from the screen surface.
+
+Simulation acceptance: `tictactoe_motion/test/verify_board_canvas.py --output <dir>`
+with common/sim parameter files. It checks loaded board/base poses, draws a grid X,
+a snapped O and a smooth O, verifies spawned entities, performs the virtual Reset,
+checks deletion and returns to zero. It captures before/written/cleared camera
+frames. A small Web drawing canvas is the next integration step.

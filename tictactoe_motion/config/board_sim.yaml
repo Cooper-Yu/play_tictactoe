@@ -1,0 +1,52 @@
+environment: sim
+frame_id: base_link
+base_world_pose_required:
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+- 0.0
+board_world_pose:
+- 0.2
+- 0.0
+- 0.02
+- 0.0
+- 0.0
+- 0.0
+screen_bounds:
+  min:
+  - 0.12300000000000001
+  - -0.0925
+  - 0.027
+  max:
+  - 0.277
+  - 0.11050000000000001
+  - 0.027
+safe_corners:
+- - 0.128
+  - 0.10550000000000001
+  - 0.027
+- - 0.272
+  - 0.10550000000000001
+  - 0.027
+- - 0.272
+  - -0.0875
+  - 0.027
+- - 0.128
+  - -0.0875
+  - 0.027
+margin_m: 0.005
+grid_spacing_m: 0.0005
+reset_center:
+- 0.2
+- -0.1076961
+- 0.03
+reset_semantics: white visual geometry; no button sensor/contact plugin in model
+motion_reference: link6 XY projection; no physical pen TCP calibrated
+hover_link6_z_m: 0.22
+drawing_link6_z_m: 0.21
+source_sha256:
+  worlds/tictactoe.world: 9c331c32bf2b20ebca1a905f33aebf96db39c8888073288b94fcdf32940e5e5f
+  models/board/model.sdf: 4425c5fc915332deab4e5e09f2a82b7f5b83e51f0eebe23abed7205b3fe23774
+  models/board/meshes/board.dae: 02351e6a966bb0079615f85fa2b4b9fe466ef1d3dd38abd7a07de1c84999c624

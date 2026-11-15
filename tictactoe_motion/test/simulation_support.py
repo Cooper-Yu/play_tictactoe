@@ -193,6 +193,13 @@ class SimulationHarness:
         self.check_motion_guard()
         self.samples = []
         last_stamp = None
+        end = self.node.planned_trajectory.joint_trajectory.points[-1].time_from_start
+        planned_duration = end.sec + end.nanosec*1e-9
+        if not math.isfinite(planned_duration) or planned_duration > 120:
+            raise ValueError('Simulation test refuses a trajectory longer than 120 simulated seconds')
+        timeout = max(timeout, 2*planned_duration+10)
+        started = time.monotonic()
+        print(f'EXECUTE planned_duration={planned_duration:.3f}s wall_budget={timeout:.3f}s', flush=True)
         self.call('execute_planned_trajectory')
         deadline = time.monotonic() + timeout
         while self.execution.is_executing:
@@ -211,7 +218,7 @@ class SimulationHarness:
                                  'xyzw': [q.x, q.y, q.z, q.w]})
         result = copy.deepcopy(self.execution.last_comparison)
         assert result is not None, self.execution.stop.status
-        self.results.append({'comparison': result, 'samples': copy.deepcopy(self.samples)})
+        self.results.append({'comparison': result, 'samples': copy.deepcopy(self.samples), 'planned_duration_s': planned_duration, 'wall_duration_s': time.monotonic()-started})
         return result
 
     def record(self, name):
