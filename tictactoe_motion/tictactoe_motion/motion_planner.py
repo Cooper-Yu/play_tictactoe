@@ -19,6 +19,7 @@ class MotionPlanner(Node):
         self.current_joint_state = None
         self.planned_trajectory = None
         self.planned_target_pose = None
+        self.is_planning = False
         self.joint_state_subscription = self.create_subscription(
             JointState, "/joint_states", self.joint_state_callback, 10
         )
@@ -128,6 +129,12 @@ class MotionPlanner(Node):
         return goal
 
     def request_plan(self, axis, distance):
+        if self.is_planning:
+            self.get_logger().warning("Cannot plan: planning already in progress")
+            return False
+
+        self.planned_trajectory = None
+        self.planned_target_pose = None
         if self.current_joint_state is None:
             self.get_logger().warning("Cannot plan: joint states unavailable")
             return False
@@ -142,21 +149,57 @@ class MotionPlanner(Node):
         if not self.move_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().warning("MoveIt action server unavailable")
             return False
-        self.send_goal_future = self.move_client.send_goal_async(goal)
-        self.send_goal_future.add_done_callback(self.goal_response_callback)
+
+        self.is_planning = True
+        try:
+            self.send_goal_future = self.move_client.send_goal_async(goal)
+            self.send_goal_future.add_done_callback(
+                self.goal_response_callback
+            )
+        except Exception as error:
+            self.is_planning = False
+            self.get_logger().error(
+                f"Failed to send planning request: {error}"
+            )
+            return False
         return True
 
     def goal_response_callback(self, future):
-        goal_handle = future.result()
+        try:
+            goal_handle = future.result()
+        except Exception as error:
+            self.is_planning = False
+            self.get_logger().error(
+                f"Failed to receive planning goal response: {error}"
+            )
+            return
         if not goal_handle.accepted:
+            self.is_planning = False
             self.get_logger().warning("Planning goal rejected")
             return
         self.get_logger().info("Planning goal accepted")
-        self.result_future = goal_handle.get_result_async()
-        self.result_future.add_done_callback(self.planning_result_callback)
+        try:
+            self.result_future = goal_handle.get_result_async()
+            self.result_future.add_done_callback(
+                self.planning_result_callback
+            )
+        except Exception as error:
+            self.is_planning = False
+            self.get_logger().error(
+                f"Failed to request planning result: {error}"
+            )
+            return
 
     def planning_result_callback(self, future):
-        response = future.result()
+        self.is_planning = False
+        try:
+            response = future.result()
+        except Exception as error:
+            self.get_logger().error(
+                f"Failed to receive planning result: {error}"
+            )
+            return
+
         status = response.status
         result = response.result
 
