@@ -15,6 +15,7 @@ from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 from tictactoe_motion.trajectory_executor import TrajectoryExecutor
 from tictactoe_motion.configuration import declare_settings
+from tictactoe_motion.cartesian_planner import CartesianPlanner
 
 
 class MotionPlanner(Node):
@@ -44,10 +45,16 @@ class MotionPlanner(Node):
         self.declare_parameter("distance", 0.0)
         self.declare_parameter("velocity_scaling", 0.1)
         self.declare_parameter("acceleration_scaling", 0.1)
+        self.declare_parameter('dx', 0.0)
+        self.declare_parameter('dy', 0.0)
+        self.cartesian_planner = CartesianPlanner(self)
         self.joint_state_sequence = 0
 
     def destroy_node(self):
         """! @brief Release action waitables before destroying their ROS node/context."""
+        cartesian = getattr(self, 'cartesian_planner', None)
+        if cartesian is not None:
+            cartesian.close()
         recording = getattr(self, 'pose_recording_demo', None)
         if recording is not None:
             recording.close()
@@ -90,6 +97,9 @@ class MotionPlanner(Node):
         """! @brief Discard pending plans and cancel this client's known plan-only goal."""
         self.invalidate_plan()
         self.is_planning = False
+        cartesian = getattr(self, 'cartesian_planner', None)
+        if cartesian is not None:
+            cartesian.cancel()
         handle = self.plan_goal_handle
         self.plan_goal_handle = None
         if handle is not None:

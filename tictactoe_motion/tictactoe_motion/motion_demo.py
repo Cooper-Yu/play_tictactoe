@@ -25,6 +25,14 @@ class MotionDemo:
             self.planning_trigger_callback
         )
 
+        self.xy_service = node.create_service(Trigger, '/plan_xy', self.xy_callback)
+
+    def xy_callback(self, request, response):
+        response.success = self.node.cartesian_planner.request_xy(
+            self.node.get_parameter('dx').value, self.node.get_parameter('dy').value)
+        response.message = 'Cartesian planning requested; result pending' if response.success else 'Cartesian request rejected; check node logs'
+        return response
+
     def run_planning_demo(self):
         axis = self.node.get_parameter("axis").value
         distance = self.node.get_parameter("distance").value

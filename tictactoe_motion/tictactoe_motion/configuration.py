@@ -28,6 +28,14 @@ DEFAULTS = {
     'return_position_tolerance': 0.0003,
     'return_orientation_tolerance': 0.003,
     'state_log_period': 1.0,
+    'cartesian_service': '/compute_cartesian_path',
+    'cartesian_step': 0.001,
+    'cartesian_timeout': 15.0,
+    'cartesian_joint_jump': 0.15,
+    'cartesian_max_length': 0.3,
+    'cartesian_speed': 0.005,
+    'cartesian_path_tolerance': 0.0005,
+    'cartesian_orientation_tolerance': 0.003,
 }
 
 
