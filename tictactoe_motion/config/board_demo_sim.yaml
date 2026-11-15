@@ -1,0 +1,6 @@
+# Optional faster airborne canvas-demo profile; never loaded by the real launch.
+motion_planner:
+  ros__parameters:
+    velocity_scaling: 0.3
+    acceleration_scaling: 0.3
+    cartesian_speed: 0.02

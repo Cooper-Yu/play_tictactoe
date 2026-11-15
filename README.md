@@ -197,3 +197,11 @@ with common/sim parameter files. It checks loaded board/base poses, draws a grid
 a snapped O and a smooth O, verifies spawned entities, performs the virtual Reset,
 checks deletion and returns to zero. It captures before/written/cleared camera
 frames. A small Web drawing canvas is the next integration step.
+
+For the faster simulation-only canvas profile, add
+`--params-file tictactoe_motion/config/board_demo_sim.yaml` after the sim file.
+This sets Cartesian speed to 20 mm/s and velocity/acceleration scaling to 0.3.
+The real launch and conservative common/sim defaults stay unchanged. Add
+`--test-stop` to the acceptance script to verify an explicit mid-line software
+stop, fresh settled feedback, rejection of the old plan, and a newly planned
+return to zero. The profile is optional; timing is not a hardware speed claim.

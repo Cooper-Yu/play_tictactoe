@@ -34,12 +34,14 @@ def radial_error(points,center,radius=.01):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',required=True)
+    p.add_argument('--test-stop',action='store_true')
     args=p.parse_args(remove_ros_args(sys.argv)[1:]);profile=yaml.safe_load((Path(__file__).parents[1]/'config/board_sim.yaml').read_text())
     canvas=BoardCanvas(profile);h=SimulationHarness(args.output);renderer=None
     generation=h.execution.stop.generation
     h.motion_guard=lambda:(h.execution.stop.generation!=generation or h.execution.stop.status.get('state') in ('stop_requested','stopped','blocked'))
     report={'scenario':'bounded canvas, grid/smooth curves, measured virtual ink and Reset','simulation_only':True,
             'geometry':profile,'grid_nodes':[canvas.nx+1,canvas.ny+1]}
+    report['motion_settings']={key:h.node.get_parameter(key).value for key in ('velocity_scaling','acceleration_scaling','cartesian_speed')}
     frame={'msg':None}
     subscription=h.client.create_subscription(Image,'/camera1/image_raw',lambda msg:frame.update(msg=msg),qos_profile_sensor_data)
     bridge=CvBridge()
@@ -78,6 +80,7 @@ def main():
                 draw_result=h.results[offset+2]
                 item['actual_max_radial_error_m']=max(abs(math.dist(s['xyz'][:2],center)-.01) for s in draw_result['samples'])
                 assert item['actual_max_radial_error_m'] < (.0006 if snap else .0003),item
+            item['draw_duration_s']=sum(execution['planned_duration_s'] for stage,execution in zip(stages,h.results[offset:]) if stage['stage'].endswith('_draw'))
             report['shapes'][name]=item
         report['painted']=painted
         models=h.result(listing.call_async(GetModelList.Request())).model_names
@@ -95,7 +98,26 @@ def main():
         models=h.result(listing.call_async(GetModelList.Request())).model_names
         assert not any(item['model'] in models for item in painted)
         deadline=time.monotonic()+1;h.until(lambda:time.monotonic()>=deadline,3);screenshot('cleared')
-        report['zero_finish']=h.named('zero');report['passed']=True
+        report['zero_finish']=h.named('zero')
+        if args.test_stop:
+            # An independent operator-like test, not automatic continuation after a cancelled drawing.
+            h.motion_guard=None
+            start=copy.deepcopy(target);start.position.x=.22;start.position.y=-.02
+            h.pose(start)
+            actual=h.current_pose()
+            assert h.node.cartesian_planner.request_xy(.03,0.)
+            h.until(lambda:not h.node.is_planning);h.guard()
+            h.call('execute_planned_trajectory')
+            h.until(lambda:h.execution.execution_goal_handle is not None)
+            h.until(lambda:abs(h.current_pose().position.x-actual.position.x)>.0005,5)
+            stamp=time.monotonic();h.call('stop_motion')
+            h.until(lambda:h.execution.stop.status.get('state') in ('stopped','stop_blocked'),10)
+            assert h.execution.stop.status['state']=='stopped',h.execution.stop.status
+            assert not h.execution.is_executing and h.node.planned_trajectory is None
+            rejected=h.call('execute_planned_trajectory',success=False)
+            report['stop_test']={'confirmed':True,'confirmation_wall_s':time.monotonic()-stamp,'old_plan_rejected':not rejected.success,'status':copy.deepcopy(h.execution.stop.status)}
+            report['zero_after_stop']=h.named('zero')
+        report['passed']=True
     except BaseException as error:
         report.update(passed=False,error=repr(error));print('FAIL',repr(error),flush=True)
     finally:
