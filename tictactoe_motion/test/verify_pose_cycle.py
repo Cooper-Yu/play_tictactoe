@@ -26,6 +26,9 @@ def main():
     if args.target is None and (not math.isfinite(args.clearance) or not args.distance < args.clearance <= .1):
         p.error('Demo clearance must exceed descent distance and be at most 0.1 m')
     h=SimulationHarness(args.output)
+    stop_generation=h.execution.stop.generation
+    h.motion_guard=lambda: (h.execution.stop.generation!=stop_generation or
+                            h.execution.stop.status.get('state') in ('stop_requested','stopped','blocked'))
     report={'scenario':'zero -> target -> -Z -> +Z -> zero','simulation_only':True,'distance_m':args.distance}
     try:
         report['controllers']=h.preflight()
@@ -35,7 +38,7 @@ def main():
         else:target.position.z+=args.clearance
         cycle=PoseCycle(target,args.distance)
         report['target_xyz']=[target.position.x,target.position.y,target.position.z]
-        report['stages']=cycle.run(h,on_stage=lambda name:print('STAGE '+name,flush=True))
+        report['stages']=cycle.run(h,cancelled=h.motion_guard,on_stage=lambda name:print('STAGE '+name,flush=True))
         report['upper_xyz']=[cycle.upper.position.x,cycle.upper.position.y,cycle.upper.position.z]
         report['lower_xyz']=[cycle.lower.position.x,cycle.lower.position.y,cycle.lower.position.z]
         report['descent']=vertical_metrics(h.results[2]['samples'],cycle.upper)

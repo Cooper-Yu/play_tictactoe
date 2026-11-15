@@ -115,8 +115,14 @@ class SimulationHarness:
         assert set(joints) == {f'joint{i}' for i in range(1, 7)}
         return joints, self.fk(joints)
 
+    def check_motion_guard(self):
+        guard = getattr(self, 'motion_guard', None)
+        if guard is not None and guard():
+            raise RuntimeError('Sequence cancelled; no further motion request allowed')
+
     def named(self, name):
         joints, target = self.named_target(name)
+        self.check_motion_guard()
         assert self.node.request_joint_plan(joints, target, name)
         self.until(lambda: not self.node.is_planning)
         self.guard(2.0)
@@ -137,12 +143,14 @@ class SimulationHarness:
         return result
 
     def pose(self, target):
+        self.check_motion_guard()
         assert self.node.request_pose_plan(target, orientation_tolerance=.001)
         self.until(lambda: not self.node.is_planning)
         self.guard(2.0)
         return self.verified_pose_result(self.execute())
 
     def linear(self, target_position):
+        self.check_motion_guard()
         assert self.node.cartesian_planner.request_linear_position(target_position)
         self.until(lambda: not self.node.is_planning)
         self.guard()
@@ -167,6 +175,7 @@ class SimulationHarness:
         return {'max_joint_excursion_rad': maximum, 'points': len(joints.points), 'duration_s': previous}
 
     def execute(self, timeout=45):
+        self.check_motion_guard()
         self.samples = []
         last_stamp = None
         self.call('execute_planned_trajectory')
