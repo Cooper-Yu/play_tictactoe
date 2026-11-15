@@ -45,3 +45,12 @@ def test_visual_profile_targets_only_supplied_master(monkeypatch):
     assert call.call_args.args[0][-1]=='name: "default" shadows: false'
     call.return_value.returncode=1
     assert not session.disable_shadows(environment)
+
+
+def test_readiness_repairs_only_known_stranded_states(monkeypatch):
+    monkeypatch.syspath_prepend(str(MODULE.parent))
+    import controller_readiness as readiness
+    assert readiness.arm_operation('unconfigured',False) is None
+    assert readiness.arm_operation('unconfigured',True)=='configure'
+    assert readiness.arm_operation('inactive',True)=='activate'
+    for state in ['active','finalized',None]:assert readiness.arm_operation(state,True) is None

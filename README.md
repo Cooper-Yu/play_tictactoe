@@ -99,3 +99,19 @@ The checks are sampled bounds, not a proof over every instant.
 checks an independent denser FK sample grid and measured TF coverage/deviation,
 and returns to the recorded clear baseline after each gesture. Temporary records
 are removed. Existing execution and software-stop interfaces are reused.
+
+For an interactive development session that stays running:
+
+```bash
+python3 tools/simulation_session.py --with-moveit --duration 0 \
+  --state-dir ~/ros2_ws/.play_tictactoe_simulation
+```
+
+`--duration 0` explicitly keeps the session alive until Ctrl+C or its `STOP` file.
+Keep one browser and this simulator/MoveIt instance while rebuilding or restarting
+only the application's nodes. Temporary test records can be deleted independently.
+The manager waits for the owned Gazebo arm controller before starting MoveIt. If
+the course loader strands an already loaded arm in `unconfigured` after its CLI
+response timeout, a simulation-only helper waits a grace period, configures it,
+then activates it. It requires a session-tagged gzserver and rejects hardware
+bridge nodes. It sends no trajectory goals; unknown service results fail closed.

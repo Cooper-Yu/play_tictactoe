@@ -77,7 +77,7 @@ def main():
     parser.add_argument('--keep-shadows', action='store_true')
     parser.add_argument('--state-dir', required=True)
     args = parser.parse_args()
-    if not 0 <= args.domain <= 232 or not 1024 <= args.master_port <= 65535 or not 0 < args.duration <= 3600:
+    if not 0 <= args.domain <= 232 or not 1024 <= args.master_port <= 65535 or not 0 <= args.duration <= 3600:
         parser.error('Invalid domain, port or bounded duration')
     root = Path(args.state_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -96,9 +96,9 @@ def main():
                    GAZEBO_MASTER_URI=f'http://127.0.0.1:{args.master_port}',
                    LIBGL_ALWAYS_SOFTWARE='1', LP_NUM_THREADS=str(args.render_threads),
                    OMP_NUM_THREADS='1', QT_X11_NO_MITSHM='1', PLAY_TICTACTOE_SESSION=tag)
+        (root/'STOP').unlink(missing_ok=True)
         commands = [('gazebo', ['ros2', 'launch', 'piper_gazebo', 'piper_gazebo.launch.py'])]
-        if args.with_moveit:
-            commands.append(('moveit', ['ros2', 'launch', 'piper_with_gripper_moveit', 'move_group_sim.launch.py']))
+
         state = {'tag': tag, 'domain': args.domain, 'port': args.master_port, 'pids': [],
                  'render_threads': args.render_threads, 'state_dir': str(root)}
         stopped = False
@@ -109,6 +109,8 @@ def main():
         signal.signal(signal.SIGTERM, stop)
         children = []
         logs = []
+        readiness = None
+        auxiliaries = []
         try:
             for name, command in commands:
                 log = (root/(name+'.log')).open('w')
@@ -117,15 +119,37 @@ def main():
                                          stderr=subprocess.STDOUT, start_new_session=True)
                 children.append(child)
                 state['pids'].append(child.pid)
+            if args.with_moveit:
+                log = (root/'controller_readiness.log').open('w')
+                logs.append(log)
+                readiness = subprocess.Popen(['python3', str(Path(__file__).with_name('controller_readiness.py')),
+                    '--output', str(root/'controllers_ready.json')], env=env, stdout=log,
+                    stderr=subprocess.STDOUT, start_new_session=True)
+                auxiliaries.append(readiness)
+                state['pids'].append(readiness.pid)
+                state['controllers_ready'] = False
             (root/'session.json').write_text(json.dumps(state, indent=2))
             print('SIMULATION_SESSION_STARTED '+json.dumps(state), flush=True)
             started = time.monotonic()
-            deadline = started+args.duration
+            deadline = started+args.duration if args.duration else float('inf')
             display_applied = args.keep_shadows
             next_display_attempt = started+8.0
             while not stopped and time.monotonic() < deadline and not (root/'STOP').exists():
                 if any(child.poll() is not None for child in children):
                     raise RuntimeError('Gazebo or MoveIt launch exited; inspect session logs')
+                if readiness is not None and not state['controllers_ready'] and readiness.poll() is not None:
+                    if readiness.returncode != 0:
+                        raise RuntimeError('Controller readiness failed; inspect controller_readiness.log')
+                    state['controllers_ready'] = True
+                    state['controller_startup'] = json.loads((root/'controllers_ready.json').read_text())
+                    log = (root/'moveit.log').open('w')
+                    logs.append(log)
+                    child = subprocess.Popen(['ros2', 'launch', 'piper_with_gripper_moveit', 'move_group_sim.launch.py'],
+                        env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                    children.append(child)
+                    state['pids'].append(child.pid)
+                    (root/'session.json').write_text(json.dumps(state, indent=2))
+                    print('MOVEIT_STARTED_AFTER_CONTROLLERS_READY', flush=True)
                 if not display_applied and time.monotonic() >= next_display_attempt:
                     display_applied = disable_shadows(env)
                     next_display_attempt = time.monotonic()+3.0
@@ -136,7 +160,7 @@ def main():
                 time.sleep(.2)
         finally:
             remaining = terminate_owned(tag)
-            for child in children:
+            for child in children+auxiliaries:
                 try:
                     child.wait(timeout=2)
                 except subprocess.TimeoutExpired:

@@ -12,9 +12,11 @@ def main():
     args=p.parse_args(remove_ros_args(sys.argv)[1:])
     h=SimulationHarness(args.output)
     report={'scenario':'airborne X and O in XY at fixed Z/orientation','simulation_only':True}
+    clear_ready = False
     try:
         report['controllers']=h.preflight()
         report['clear']=h.named('clear')
+        clear_ready = True
         h.record('baseline')
         for shape in ['cross','circle']:
             report[shape]={}
@@ -26,7 +28,7 @@ def main():
     except BaseException as error:
         report.update(passed=False,error=repr(error))
         print('FAIL',repr(error),flush=True)
-        if not h.execution.is_executing:
+        if clear_ready and not h.execution.is_executing:
             try:report['recovery']=h.named('clear')
             except BaseException as e:report['recovery_error']=repr(e)
     finally:
