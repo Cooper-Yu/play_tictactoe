@@ -238,3 +238,27 @@ until X wins, captures the displayed board, triggers virtual Reset and returns
 to zero. Use the common, sim and optional board_demo_sim parameter files as in
 the canvas acceptance. This is the motion/game foundation for the future small
 Web canvas, not a completed GUI.
+
+### Larger grids and X/O five-in-a-row
+
+`DrawingActions.draw_grid(..., rows=9, columns=9)` draws a 9x9 **cell** grid;
+rows/columns are configurable from 2 to15 (up to28 internal lines, with lifted
+transfers). The original3x3 default remains compatible. Width and height are
+independent metric dimensions. Game symbols scale from
+`cell_size = min(width / columns, height / rows)`:
+X edge=0.55*cell_size, O radius=0.25*cell_size.
+
+`GridGame` provides shared explicit-turn state. `TicTacToe` preserves three-in-a-row;
+`Gomoku` defaults to9x9 cells and five-in-a-row. This airborne X/O variant uses
+cell centers, permits overlines (five or more), and has no renju forbidden moves
+or automatic opponent. Winning runs cannot cross row boundaries or gaps. Failed
+execution blocks further turns without committing a phantom mark.
+
+`test/verify_gomoku_game.py` draws a90x90mm9x9 grid (10mm cells,5.5mm X edges,
+2.5mm O radii), alternates nine specified moves to an X win, verifies30 measured
+ink models, performs virtual Reset and returns tozero. Use the same common/sim/
+board_demo_sim ROS parameter files and a temporary output/poses file. The larger
+9cm lines use a0.75rad cumulative-excursion test envelope; the normal helper
+remains0.5rad and the production per-sample jump, FK path, joint-limit, collision
+and execution checks remain in force. This is one demonstrated configuration,
+not runtime certification of all sizes or all board cells.

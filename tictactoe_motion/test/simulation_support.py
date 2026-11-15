@@ -157,7 +157,7 @@ class SimulationHarness:
         return self.verified_pose_result(self.execute())
 
 
-    def path(self, poses):
+    def path(self, poses, excursion_limit=0.5):
         """Execute an XY stroke at the achieved drawing height and orientation."""
         self.check_motion_guard()
         start = self.current_pose()
@@ -168,7 +168,7 @@ class SimulationHarness:
             path.append(target)
         assert self.node.cartesian_planner.request_path(path)
         self.until(lambda: not self.node.is_planning)
-        self.guard()
+        self.guard(excursion_limit)
         return self.verified_pose_result(self.execute())
 
     def guard(self, limit=0.5):

@@ -27,13 +27,19 @@ class DrawingActions:
     def _prepare(self,strokes):
         return CanvasDrawing(self.canvas,strokes,upper_z=self.upper_z,depth=self.depth,snap=False)
 
-    def grid_strokes(self,center=(.5,.5),width=.06,height=.06):
-        """! @brief Preview two vertical and two horizontal grid lines inside the board."""
+    def grid_strokes(self,center=(.5,.5),width=.06,height=.06,rows=3,columns=3):
+        """! @brief Preview a bounded rows-by-columns grid with separate internal lines."""
         u,v=self._center(center);du=self._length(width)/self.width;dv=self._length(height)/self.height
+        if any(not isinstance(n,int) or isinstance(n,bool) or not 2<=n<=15 for n in (rows,columns)):
+            raise ValueError('Grid rows/columns must be integers in 2..15')
         strokes=[]
-        for offset in (-1/6,1/6):
-            strokes.append([(u+du*offset,v-dv/2),(u+du*offset,v+dv/2)])
-            strokes.append([(u-du/2,v+dv*offset),(u+du/2,v+dv*offset)])
+        for i in range(1,max(rows,columns)):
+            if i<columns:
+                x=u+du*(i/columns-.5)
+                strokes.append([(x,v-dv/2),(x,v+dv/2)])
+            if i<rows:
+                y=v+dv*(i/rows-.5)
+                strokes.append([(u-du/2,y),(u+du/2,y)])
         self._prepare(strokes)
         return strokes
 
@@ -58,9 +64,9 @@ class DrawingActions:
         stages=self._prepare(strokes).run(self.driver,cancelled=cancelled,on_stage=on_stage)
         return {'passed':True,'stages':stages}
 
-    def draw_grid(self,center=(.5,.5),width=.06,height=.06,*,cancelled=lambda:False,on_stage=lambda name:None):
+    def draw_grid(self,center=(.5,.5),width=.06,height=.06,*,rows=3,columns=3,cancelled=lambda:False,on_stage=lambda name:None):
         """! @brief Draw a parameterized grid using separate lifted strokes."""
-        return self._run(self.grid_strokes(center,width,height),cancelled,on_stage)
+        return self._run(self.grid_strokes(center,width,height,rows,columns),cancelled,on_stage)
 
     def draw_x(self,center=(.5,.5),size=.012,*,cancelled=lambda:False,on_stage=lambda name:None):
         """! @brief Draw two lifted diagonals at the requested board-local center."""
