@@ -38,6 +38,15 @@ def test_jog_and_busy_stop(tmp_path):
         session.submit(dict(kind='record', name='Reset'))
 
 
+def test_real_commands_retain_small_step_and_speed_limits(tmp_path):
+    session = WorkbenchSession(tmp_path, environment='real')
+    assert session.status()['environment'] == 'real'
+    assert validate_command(dict(kind='jog', axis='x', distance=.002, speed=.05), 'real')['distance'] == .002
+    for command in [dict(kind='jog', axis='x', distance=.005), dict(kind='preset', name='clear', speed=.2)]:
+        with pytest.raises(ValueError):
+            validate_command(command, 'real')
+
+
 def test_image_crop_and_brightness():
     raw = np.full((40, 60, 3), 100, np.uint8)
     _, encoded = cv2.imencode('.jpg', raw)

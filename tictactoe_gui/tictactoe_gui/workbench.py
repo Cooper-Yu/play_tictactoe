@@ -43,7 +43,7 @@ def enhance_frame(frame, query):
     return encoded.tobytes()
 
 
-def validate_command(data):
+def validate_command(data, environment='sim'):
     """! @brief Validate browser requests before they reach the ROS queue."""
     kind = data.get('kind')
     if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera'):
@@ -54,15 +54,16 @@ def validate_command(data):
         distance = data.get('distance')
         if axis not in ('x', 'y', 'z'):
             raise ValueError('方向必须是 x / y / z')
+        limit = .002 if environment == 'real' else .02
         if (isinstance(distance, bool) or not isinstance(distance, (int, float))
-                or not math.isfinite(distance) or not 0 < abs(distance) <= .02):
-            raise ValueError('单步距离必须在 0–20 mm 内')
+                or not math.isfinite(distance) or not 0 < abs(distance) <= limit):
+            raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
         result.update(axis=axis, distance=float(distance))
     if kind in ('jog', 'preset', 'return'):
         speed = data.get('speed', .1)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))
-                or not math.isfinite(speed) or not .01 <= speed <= .3):
-            raise ValueError('速度缩放范围为 1–30%')
+                or not math.isfinite(speed) or not .01 <= speed <= (.1 if environment == 'real' else .3)):
+            raise ValueError('速度缩放超出当前环境范围')
         result['speed'] = float(speed)
     if kind in ('preset', 'record', 'return', 'delete'):
         name = data.get('name')
@@ -85,7 +86,10 @@ def validate_command(data):
 
 class WorkbenchSession:
     """! @brief Share immutable snapshots and a bounded command queue with HTTP."""
-    def __init__(self, output):
+    def __init__(self, output, environment='sim'):
+        if environment not in ('sim', 'real'):
+            raise ValueError('Unknown workstation environment')
+        self.environment = environment
         self.output = Path(output).expanduser().resolve()
         self.output.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
@@ -95,7 +99,7 @@ class WorkbenchSession:
         self.token = secrets.token_urlsafe(24)
         self.frames = {}
         self.state = dict(state='connecting', message='正在连接仿真', busy=False,
-                          environment='sim', pose=None, joints={}, fresh=False,
+                          environment=environment, pose=None, joints={}, fresh=False,
                           camera={}, topics=[], records={}, plan=None, comparison=None, job=0)
         self.state['storage'] = str(self.output)
 
@@ -108,7 +112,7 @@ class WorkbenchSession:
             return copy.deepcopy(self.state)
 
     def submit(self, data):
-        command = validate_command(data)
+        command = validate_command(data, self.environment)
         with self.lock:
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked', 'stopping'):
                 raise RuntimeError('尚未就绪或已有操作正在进行')
@@ -150,7 +154,7 @@ def make_handler(session):
             if url.path == '/api/status':
                 return self.send(200, session.status())
             if url.path == '/api/config':
-                return self.send(200, {'token': session.token, 'environment': 'sim'})
+                return self.send(200, {'token': session.token, 'environment': session.environment})
             if url.path == '/api/frame':
                 frame = session.frame('live')
                 if frame and 'beta' in parse_qs(url.query):
@@ -203,8 +207,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--environment', choices=('sim', 'real'), default='sim')
     args = parser.parse_args(remove_ros_args()[1:])
-    session = WorkbenchSession(args.output)
+    session = WorkbenchSession(args.output, args.environment)
     server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(session))
     def run():
         try:

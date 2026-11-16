@@ -4,6 +4,7 @@ const raw = $('raw'), enhanced = $('enhanced');
 let token, state = {}, roi = null, drag = null, rawImage = null, selected = 'Reset';
 let lastSequence = -1, lastTopic = '', lastRecordKey = '', requestBusy = false;
 let betaRevision = 0, renderedRevision = -1, imageBusy = false, toastTimer;
+let appliedEnvironment = null;
 const fixedNames = ['Reset', '左上', '右上', '右下', '左下'];
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
@@ -54,9 +55,20 @@ function renderRecords() {
   $('record-detail').textContent = record ? `${selected} · X ${(record.pose_stamped.pose.position.x*1000).toFixed(2)} / Y ${(record.pose_stamped.pose.position.y*1000).toFixed(2)} / Z ${(record.pose_stamped.pose.position.z*1000).toFixed(2)} mm · base_link / link6 · joint1–joint6 已保存` : '选择一条记录查看位姿';
 }
 function render() {
+  const real = state.environment === 'real';
+  if(appliedEnvironment !== state.environment && state.environment) {
+    appliedEnvironment=state.environment;
+    if(real) {
+      for(const option of [...$('step').options]) if(Number(option.value)>.002) option.remove();
+      for(const option of [...$('speed').options]) if(Number(option.value)>.1) option.remove();
+      $('speed').value='.05';
+      if(!$('speed').value)$('speed').value='0.05';
+    }
+  }
+  $('environment-label').textContent='ROS 2 / MoveIt 2 · '+(real?'真机模式':'仿真模式');
   $('status').textContent = state.message || '等待连接';
   $('storage').textContent = state.storage ? '记录保存位置（WSL）：'+state.storage : '';
-  $('connection').textContent = state.state === 'offline' ? '仿真未连接' : state.fresh ? '● 仿真已连接' : '等待机械臂反馈';
+  $('connection').textContent = state.state === 'offline' ? '工作台未连接' : state.fresh ? '● '+(real?'真机':'仿真')+'已连接' : '等待机械臂反馈';
   $('feedback').textContent = state.fresh ? '实际反馈 · base_link → link6' : '反馈已过期 / 等待数据';
   $('feedback').classList.toggle('stale', !state.fresh);
   for (const axis of ['x','y','z']) $('p'+axis).textContent = state.pose && state.fresh ? (state.pose[axis]*1000).toFixed(2) : '—';
@@ -72,7 +84,7 @@ function render() {
   }
   const camera=state.camera || {};
   $('resolution').textContent = camera.width ? `${camera.width} × ${camera.height} · ${camera.encoding}` : '等待图像';
-  $('camera-badge').textContent = camera.fresh ? 'LIVE · 仿真相机' : camera.sequence ? '相机延迟 · 保留上一帧' : '等待实时相机';
+  $('camera-badge').textContent = camera.fresh ? 'LIVE · '+(real?'真机':'仿真')+'相机' : camera.sequence ? '相机延迟 · 保留上一帧' : '等待实时相机';
   $('camera-badge').classList.toggle('stale', !camera.fresh);
   $('camera-info').textContent = camera.error || (camera.frame_id ? `${camera.frame_id} · 图像年龄 ${camera.age_s?.toFixed(1)} s${camera.fps ? ' · '+camera.fps.toFixed(1)+' fps' : ''}` : '选择一个 sensor_msgs/msg/Image topic');
   if (!camera.sequence) {rawImage=null;raw.getContext('2d').clearRect(0,0,raw.width,raw.height);enhanced.getContext('2d').clearRect(0,0,enhanced.width,enhanced.height);}

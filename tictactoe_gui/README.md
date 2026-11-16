@@ -47,9 +47,13 @@ before switching interfaces, or specify another port for a separate simulation.
   `output_dir:=/persistent/path` to change it. Runtime data is excluded from Git;
   back it up separately. The Construct must use a persistent rosject directory.
 
-This first workstation has **simulation-only** launch/preflight, with no real-arm
-launch or automatic hardware migration. A later real adapter must select real
-configuration and verify the actual robot/control/calibration environment.
+The explicit hardware entry is `ros2 launch tictactoe_gui localization_real.launch.py`.
+It requires the connected physical Piper bridge and official MoveIt server in the same ROS domain.
+It checks fresh joint/TF feedback, controller mapping and unique motion owners. Startup does not move or enable hardware.
+Real steps are limited to 2mm and velocity scaling to 10%, with 5% selected initially.
+Physical records use data/localization_real/poses_real.json and separate screenshots.
+Run the browser on the same cloud desktop (Graphical Tools) at http://localhost:8765/.
+The listener stays loopback-only. Hardware operation requires explicit authorization.
 
 ## Separate tablet canvas
 

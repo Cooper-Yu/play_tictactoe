@@ -4,7 +4,7 @@ setup(
     package_data={'tictactoe_gui':['web/*']},
     data_files=[('share/ament_index/resource_index/packages',['resource/tictactoe_gui']),
                 ('share/tictactoe_gui',['package.xml']),
-                ('share/tictactoe_gui/launch',['launch/canvas_sim.launch.py', 'launch/localization_sim.launch.py'])],
+                ('share/tictactoe_gui/launch',['launch/canvas_sim.launch.py', 'launch/localization_sim.launch.py', 'launch/localization_real.launch.py'])],
     install_requires=['setuptools'], zip_safe=True,
     maintainer='cooper', maintainer_email='liuzi9240@gmail.com',
     description='Local tablet canvas with ordered simulation drawing', license='Apache-2.0',

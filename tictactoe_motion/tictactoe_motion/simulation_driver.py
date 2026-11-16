@@ -25,7 +25,7 @@ from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
 class SimulationDriver:
     """! @brief Exercise the public demo services, refusing hardware or shared ROS graphs."""
 
-    def __init__(self, output, install_signal_handlers=True):
+    def __init__(self, output, install_signal_handlers=True, client_name='simulation_acceptance'):
         self.output = Path(output).expanduser().resolve()
         self.output.mkdir(parents=True, exist_ok=True)
         from rclpy.signals import SignalHandlerOptions
@@ -35,7 +35,7 @@ class SimulationDriver:
         self.node.get_logger().set_level(rclpy.logging.LoggingSeverity.WARN)
         self.motion = MotionDemo(self.node)
         self.recording = PoseRecordingDemo(self.node)
-        self.client = Node('simulation_acceptance', use_global_arguments=False)
+        self.client = Node(client_name, use_global_arguments=False)
         self.executor.add_node(self.node)
         self.executor.add_node(self.client)
         self.execution = self.node.trajectory_executor

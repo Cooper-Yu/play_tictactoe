@@ -20,7 +20,11 @@ def workbench_worker(session):
     shots = json.loads(shot_index.read_text()) if shot_index.exists() else {}
     if not isinstance(shots, dict):
         raise ValueError('Screenshot index must be an object')
-    driver = SimulationDriver(session.output, install_signal_handlers=False)
+    if session.environment == 'real':
+        from tictactoe_motion.real_robot_driver import RealRobotDriver
+        driver = RealRobotDriver(session.output, install_signal_handlers=False)
+    else:
+        driver = SimulationDriver(session.output, install_signal_handlers=False)
     bridge = CvBridge()
     camera = {'subscription': None, 'topic': '', 'received': None, 'sequence': 0,
               'error': None, 'width': 0, 'height': 0, 'period_s': None}
@@ -78,6 +82,8 @@ def workbench_worker(session):
 
     def tick():
         now = time.monotonic()
+        if session.environment == 'real' and driver.execution.is_executing and not driver.node.feedback_is_fresh():
+            session.stop.set()
         if session.stop.is_set() and not stopping['handled']:
             stopping['handled'] = True
             driver.execution.stop.request()
@@ -105,6 +111,12 @@ def workbench_worker(session):
             last_publish['topics'] = now
             values['topics'] = sorted(name for name, types in driver.client.get_topic_names_and_types()
                                       if 'sensor_msgs/msg/Image' in types)
+            if camera['subscription'] is None:
+                candidates = ('/camera/D435/color/image_raw',) if session.environment == 'real' else ('/camera1/image_raw', '/camera/D435/color/image_raw')
+                for topic in candidates:
+                    if topic in values['topics']:
+                        switch_camera(topic)
+                        break
         session.update(**values)
 
     timer = driver.client.create_timer(.04, tick)
@@ -128,6 +140,8 @@ def workbench_worker(session):
 
     def perform(command):
         kind = command['kind']
+        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute'):
+            driver.preflight()
         if not driver.node.feedback_is_fresh():
             raise RuntimeError('关节反馈已过期')
         if driver.execution.is_executing or driver.execution.stop.blocked:
@@ -207,14 +221,27 @@ def workbench_worker(session):
             switch_camera(command['topic'])
 
     try:
-        driver.preflight()
         refresh_records()
+        if session.environment == 'real':
+            while not session.shutdown.is_set():
+                try:
+                    driver.preflight()
+                    break
+                except (ValueError, RuntimeError, TimeoutError) as error:
+                    session.update(state='connecting', message='等待真机接口：'+str(error))
+                    until = time.monotonic()+.5
+                    driver.until(lambda: session.shutdown.is_set() or time.monotonic() >= until, 1.)
+            if session.shutdown.is_set():
+                return
+        else:
+            driver.preflight()
         topics = dict(driver.client.get_topic_names_and_types())
-        for topic in ('/camera1/image_raw', '/camera/D435/color/image_raw'):
+        candidates = ('/camera/D435/color/image_raw',) if session.environment == 'real' else ('/camera1/image_raw', '/camera/D435/color/image_raw')
+        for topic in candidates:
             if 'sensor_msgs/msg/Image' in topics.get(topic, []):
                 switch_camera(topic)
                 break
-        session.update(state='ready', message='仿真已连接；启动不会移动机械臂')
+        session.update(state='ready', message=('真机' if session.environment == 'real' else '仿真')+'已连接；启动不会移动机械臂')
         while not session.shutdown.is_set():
             driver.executor.spin_once(timeout_sec=.02)
             if session.stop.is_set() and stopping['handled']:
