@@ -50,10 +50,10 @@ before switching interfaces, or specify another port for a separate simulation.
 The explicit hardware entry is `ros2 launch tictactoe_gui localization_real.launch.py`.
 It requires the connected physical Piper bridge and official MoveIt server in the same ROS domain.
 It checks fresh joint/TF feedback, controller mapping and unique motion owners. Startup does not move or enable hardware.
-Real steps are limited to 2mm and velocity scaling to 10%, with 5% selected initially.
+Real XY steps are limited to 50mm and Z steps to 20mm; velocity scaling stays at 10% maximum, with 5% selected initially. Larger steps require checking clearance first.
 Physical records use data/localization_real/poses_real.json and separate screenshots.
-Run the browser on the same cloud desktop (Graphical Tools) at http://localhost:8765/.
-The listener stays loopback-only. Hardware operation requires explicit authorization.
+For The Construct, use the HTTPS webpage gateway below in a separate browser tab.
+The ROS backend stays loopback-only; the gateway exposes only workstation routes through the platform. Hardware operation requires explicit authorization.
 
 ## Separate tablet canvas
 
@@ -135,3 +135,4 @@ The gateway accepts POST requests only from that exact public origin; the backen
 still checks its per-session token, robot readiness and motion limits. No Firefox
 or graphical desktop is required. Restart this gateway with the new URL after a
 platform slot changes. Keep the ROS backend and MoveIt running independently.
+Status polling permits only one outstanding request, with a 3-second timeout. Command acknowledgement does not wait for a status refresh; the server busy state still blocks overlapping robot commands. Read timeouts do not trigger command replay.
