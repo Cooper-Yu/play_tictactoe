@@ -82,8 +82,13 @@ def workbench_worker(session):
 
     def tick():
         now = time.monotonic()
-        if session.environment == 'real' and driver.execution.is_executing and not driver.node.feedback_is_fresh():
-            session.stop.set()
+        if (session.environment == 'real' and driver.execution.is_executing
+                and not driver.node.feedback_is_fresh() and not session.stop.is_set()):
+            received = driver.node.last_joint_state_received
+            age = now-received if received is not None else None
+            session.request_stop('执行中关节反馈过期：age='+str(age)
+                                 +'s，limit='+str(driver.node.settings['feedback_max_age'])+'s',
+                                 source='feedback_guard')
         if session.stop.is_set() and not stopping['handled']:
             stopping['handled'] = True
             driver.execution.stop.request()
@@ -289,7 +294,7 @@ def workbench_worker(session):
                 except queue.Empty:
                     pass
                 if not driver.execution.stop.blocked and not driver.execution.is_executing:
-                    session.update(state='ready', busy=False, plan=None, message='已停止，待执行规划已清除')
+                    session.update(state='ready', busy=False, plan=None, message='已停止，待执行规划已清除；'+session.status().get('last_stop', {}).get('reason', '原因未记录'))
                     session.stop.clear()
                     stopping['handled'] = False
                 continue

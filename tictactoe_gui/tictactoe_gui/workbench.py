@@ -7,6 +7,7 @@ import queue
 import secrets
 import signal
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
@@ -153,9 +154,19 @@ class WorkbenchSession:
             self.jobs.put_nowait(command)
         return command['job']
 
-    def request_stop(self):
-        self.stop.set()
-        self.update(state='stopping', message='正在停止并清除待执行规划')
+    def request_stop(self, reason='调用方请求停止', source='caller'):
+        """! @brief Preserve the first stop cause until the stopped job is inspected."""
+        event = None
+        with self.lock:
+            if not self.stop.is_set():
+                event = dict(job=self.state['job'], reason=reason, source=source,
+                             monotonic_s=time.monotonic())
+                self.state['last_stop'] = event
+            self.stop.set()
+            cause = self.state.get('last_stop', {}).get('reason', reason)
+            self.state.update(state='stopping', message='正在停止：'+cause)
+        if event is not None:
+            print('WORKBENCH_STOP '+json.dumps(event, ensure_ascii=False), flush=True)
 
     def frame(self, key):
         with self.lock:

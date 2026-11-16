@@ -324,4 +324,13 @@ The API accepts `kind=draw`, `shape=x|o|grid`, metric `size`, `speed`, and optio
 normalized `center=[u,v]`. Geometry is validated before any drawing movement.
 `motion_completed` does not assert visible ink: `ink_confirmed` remains null.
 Simulation retains its previous canvas, renderer and reset semantics; this real
-workbench entry is rejected in simulation. Real drawing ink acceptance is pending.
+workbench entry is rejected in simulation. A first physical 12 mm X/O run completed and both marks were visible. Full grid
+acceptance remains pending after interrupted runs; this is not an autonomous game.
+
+
+Before the next real drawing test, run the complete Reset action and visually
+check that the board cleared (user instruction, 2026-11-16). Stops now retain
+`last_stop` with job, source and first reason, also logged as `WORKBENCH_STOP`.
+Later cleanup stop requests preserve the initial cause; feedback-loss thresholds
+are unchanged. Earlier interrupted runs had no such audit and are not assigned a
+root cause retrospectively.
