@@ -46,7 +46,7 @@ def enhance_frame(frame, query):
 def validate_command(data, environment='sim'):
     """! @brief Validate browser requests before they reach the ROS queue."""
     kind = data.get('kind')
-    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera'):
+    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera', 'reset'):
         raise ValueError('未知操作')
     result = {'kind': kind}
     if kind == 'jog':
@@ -59,7 +59,7 @@ def validate_command(data, environment='sim'):
                 or not math.isfinite(distance) or not 0 < abs(distance) <= limit):
             raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
         result.update(axis=axis, distance=float(distance))
-    if kind in ('jog', 'preset', 'return'):
+    if kind in ('jog', 'preset', 'return', 'reset'):
         speed = data.get('speed', .1)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))
                 or not math.isfinite(speed) or not .01 <= speed <= (.1 if environment == 'real' else .3)):

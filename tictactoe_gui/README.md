@@ -136,3 +136,18 @@ still checks its per-session token, robot readiness and motion limits. No Firefo
 or graphical desktop is required. Restart this gateway with the new URL after a
 platform slot changes. Keep the ROS backend and MoveIt running independently.
 Status polling permits only one outstanding request, with a 3-second timeout. Command acknowledgement does not wait for a status refresh; the server busy state still blocks overlapping robot commands. Read timeouts do not trigger command replay.
+
+### Recorded Reset button cycle
+
+The `Reset／清屏完整动作` button uses records `reset悬空预备` and `Reset`.
+Both must belong to the active environment and base_link/link6, align in XY
+within 0.5mm, have matching orientation within 0.01rad, and differ by 1–20mm
+in Z. Save and verify these two records before enabling the action.
+
+The cycle lifts at the current XY if below the approach height, approaches the
+hover record using the existing return planner, descends vertically at no more
+than 5% scaling, dwells for 0.3s, and returns vertically to the hover height.
+The regular Stop button cancels the cycle; a canceled or failed cycle does not
+continue or automatically retreat. A separate user confirmation precedes the
+complete cycle. Motion completion is reported separately from actual screen
+clearing: automatic visual clear confirmation is not implemented.

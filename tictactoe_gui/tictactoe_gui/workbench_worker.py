@@ -140,7 +140,7 @@ def workbench_worker(session):
 
     def perform(command):
         kind = command['kind']
-        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute'):
+        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute', 'reset'):
             driver.preflight()
         if not driver.node.feedback_is_fresh():
             raise RuntimeError('关节反馈已过期')
@@ -180,6 +180,12 @@ def workbench_worker(session):
             session.update(comparison=result)
             if not result.get('passed', False):
                 raise RuntimeError('实际位姿核对未通过：'+str(result))
+        elif kind == 'reset':
+            from tictactoe_motion.reset_action import ResetAction
+            driver.node.invalidate_plan()
+            session.update(plan=None, reset_result=None)
+            result = ResetAction(driver, lambda stage: session.update(message=stage)).run(command['speed'])
+            session.update(reset_result=result)
         elif kind == 'record':
             driver.until(lambda: camera['received'] is not None and time.monotonic()-camera['received'] < 2., 8)
             driver.parameters(record_name=command['name'], overwrite=command['overwrite'])
@@ -264,7 +270,7 @@ def workbench_worker(session):
                 if session.stop.is_set():
                     raise RuntimeError('操作已取消')
                 perform(command)
-                session.update(state='ready', busy=False, message='操作完成')
+                session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '操作完成'))
             except Exception as error:
                 driver.node.invalidate_plan()
                 if driver.execution.is_executing:
