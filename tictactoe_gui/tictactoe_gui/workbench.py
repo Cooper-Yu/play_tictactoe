@@ -57,7 +57,7 @@ def enhance_frame(frame, query):
 def validate_command(data, environment='sim'):
     """! @brief Validate browser requests before they reach the ROS queue."""
     kind = data.get('kind')
-    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera', 'reset'):
+    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera', 'reset', 'draw'):
         raise ValueError('未知操作')
     result = {'kind': kind}
     if kind == 'jog':
@@ -70,12 +70,30 @@ def validate_command(data, environment='sim'):
                 or not math.isfinite(distance) or not 0 < abs(distance) <= limit):
             raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
         result.update(axis=axis, distance=float(distance))
-    if kind in ('jog', 'preset', 'return', 'reset'):
+    if kind in ('jog', 'preset', 'return', 'reset', 'draw'):
         speed = data.get('speed', .1)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))
                 or not math.isfinite(speed) or not .01 <= speed <= (.1 if environment == 'real' else .3)):
             raise ValueError('速度缩放超出当前环境范围')
         result['speed'] = float(speed)
+    if kind == 'draw':
+        if environment != 'real':
+            raise ValueError('此绘图入口只使用真机标定配置；仿真请使用原画布入口')
+        shape = data.get('shape')
+        size = data.get('size', .012)
+        center = data.get('center', [.5, .5])
+        if shape not in ('x', 'o', 'grid'):
+            raise ValueError('图形必须是 x / o / grid')
+        if (isinstance(size, bool) or not isinstance(size, (int, float))
+                or not math.isfinite(size) or not .008 <= size <= .06):
+            raise ValueError('图形尺寸必须在 8–60 mm 内')
+        if (not isinstance(center, (list, tuple)) or len(center) != 2
+                or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                       or not math.isfinite(v) or not 0 <= v <= 1 for v in center)):
+            raise ValueError('图形中心必须在画布范围 [0, 1] 内')
+        if result['speed'] > .05:
+            raise ValueError('初版真机绘图速度缩放上限为 5%')
+        result.update(shape=shape, size=float(size), center=list(center))
     if kind in ('preset', 'record', 'return', 'delete'):
         name = data.get('name')
         if not isinstance(name, str) or not name.strip() or len(name) > 80:

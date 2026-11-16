@@ -9,13 +9,37 @@ class BoardCanvas:
     accuracy. This first version requires an axis-aligned horizontal rectangle.
     """
     def __init__(self, profile):
-        if profile.get('environment')!='sim' or profile.get('frame_id')!='base_link':
-            raise ValueError('A simulation base_link geometry profile is required')
+        self.environment = profile.get('environment')
+        if self.environment not in ('sim', 'real') or profile.get('frame_id') != 'base_link':
+            raise ValueError('An explicit sim/real base_link geometry profile is required')
+        self.profile = dict(profile)
+        self.real_axes = self.environment == 'real'
+        if self.real_axes and profile.get('canvas_axes') != 'negative_x_positive_y':
+            raise ValueError('Real canvas requires explicit negative_x_positive_y axes')
         corners=profile['safe_corners']
         if len(corners)!=4 or any(len(c)!=3 or not all(math.isfinite(v) for v in c) for c in corners):
             raise ValueError('Four finite 3D corners required')
-        self.x0,self.y1,self.z=corners[0];self.x1,self.y0,_=corners[2]
-        expected=[[self.x0,self.y1,self.z],[self.x1,self.y1,self.z],[self.x1,self.y0,self.z],[self.x0,self.y0,self.z]]
+        self.z = corners[0][2]
+        self.x0 = min(c[0] for c in corners); self.x1 = max(c[0] for c in corners)
+        self.y0 = min(c[1] for c in corners); self.y1 = max(c[1] for c in corners)
+        if self.real_axes:
+            expected = [[self.x1,self.y0,self.z],[self.x0,self.y0,self.z],
+                        [self.x0,self.y1,self.z],[self.x1,self.y1,self.z]]
+            orientation = profile.get('required_orientation_xyzw', [])
+            tolerance = profile.get('orientation_tolerance_rad', float('nan'))
+            speed = profile.get('max_velocity_scaling', float('nan'))
+            if (len(orientation) != 4 or not all(math.isfinite(v) for v in orientation)
+                    or abs(sum(v*v for v in orientation)-1) > .001
+                    or not math.isfinite(tolerance) or not 0 < tolerance <= .05
+                    or not math.isfinite(speed) or not 0 < speed <= .05):
+                raise ValueError('Real drawing orientation/speed profile is invalid')
+            writing = profile.get('drawing_link6_z_m', float('nan'))
+            hover = profile.get('hover_link6_z_m', float('nan'))
+            if not (math.isfinite(writing) and math.isfinite(hover)
+                    and abs(writing-self.z) < 1e-9 and .001 <= hover-writing <= .02):
+                raise ValueError('Real profile requires consistent writing/hover heights')
+        else:
+            expected=[[self.x0,self.y1,self.z],[self.x1,self.y1,self.z],[self.x1,self.y0,self.z],[self.x0,self.y0,self.z]]
         if any(math.dist(a,b)>1e-9 for a,b in zip(corners,expected)) or self.x1<=self.x0 or self.y1<=self.y0:
             raise ValueError('Expected an ordered horizontal rectangular region')
         spacing=profile['grid_spacing_m']
@@ -33,14 +57,21 @@ class BoardCanvas:
     def point(self,i,j):
         if not isinstance(i,int) or not isinstance(j,int) or not 0<=i<=self.nx or not 0<=j<=self.ny:
             raise ValueError('Grid index outside usable board')
-        return (self.x0+i*self.step_x,self.y1-j*self.step_y,self.z)
+        return self.metric_point(i/self.nx, j/self.ny)
+
+    def metric_point(self, u, v):
+        """! @brief Map normalized screen coordinates into base_link meters."""
+        self.index(u, v)
+        if self.real_axes:
+            return (self.x1-u*(self.x1-self.x0), self.y0+v*(self.y1-self.y0), self.z)
+        return (self.x0+u*(self.x1-self.x0), self.y1-v*(self.y1-self.y0), self.z)
 
     def stroke(self,points,snap=True):
         """! @brief Quantize and connect one stroke; reject oversized paths before motion."""
         if not 2<=len(points)<=500:raise ValueError('Stroke requires 2..500 input points')
         indices=[self.index(*p) for p in points]
         if not snap:
-            output=[(self.x0+u*(self.x1-self.x0),self.y1-v*(self.y1-self.y0),self.z) for u,v in points]
+            output=[self.metric_point(u, v) for u,v in points]
             if any(math.dist(a,b)==0 for a,b in zip(output,output[1:])):
                 raise ValueError('Duplicate adjacent path points')
             if sum(math.dist(a,b) for a,b in zip(output,output[1:]))>.3:

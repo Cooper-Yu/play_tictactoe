@@ -11,8 +11,10 @@ class DrawingActions:
     required by draw methods and supplies the existing plan/execute/settle loop.
     No ROS node, robot state source or simulator renderer is created here.
     """
-    def __init__(self,canvas,driver=None,upper_z=.22,depth=.01):
-        self.canvas=canvas;self.driver=driver;self.upper_z=upper_z;self.depth=depth
+    def __init__(self,canvas,driver=None,upper_z=None,depth=None):
+        self.canvas=canvas;self.driver=driver
+        self.upper_z = canvas.profile.get('hover_link6_z_m', .22) if upper_z is None else upper_z
+        self.depth = (self.upper_z-canvas.profile.get('drawing_link6_z_m', .21)) if depth is None else depth
         self.width=canvas.x1-canvas.x0;self.height=canvas.y1-canvas.y0
 
     def _center(self,center):

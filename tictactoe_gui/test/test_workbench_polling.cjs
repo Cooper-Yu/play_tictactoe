@@ -28,3 +28,11 @@ const clickContext=vm.createContext({$:id=>id==='reset-cycle'?button:{value:'0.0
 vm.runInContext(handler,clickContext);button.onclick();
 assert.equal(submitted.kind,'reset');assert.equal(submitted.speed,.05);
 console.log('Reset button click submits reset command and selected speed');
+const drawHandler=source.split('\n').find(line=>line.startsWith("$('draw').onclick="));
+let drawSubmitted;
+const drawButton={};
+vm.runInContext(drawHandler,vm.createContext({$:id=>id==='draw'?drawButton:{value:({'draw-shape':'o','draw-size':'12','speed':'0.05'})[id]},command:data=>{drawSubmitted=data}}));
+drawButton.onclick();
+assert.equal(drawSubmitted.kind,'draw');assert.equal(drawSubmitted.shape,'o');
+assert.equal(drawSubmitted.size,.012);assert.equal(drawSubmitted.speed,.05);
+console.log('Drawing button submits shape, metric dimension and speed');

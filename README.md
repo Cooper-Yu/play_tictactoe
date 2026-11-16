@@ -304,3 +304,24 @@ materials do not constitute a completed Web GUI or real-robot calibration.
 ## Local tablet canvas
 
 See [tictactoe_gui/README.md](tictactoe_gui/README.md) for the local simulation-only Web tablet. Draw ordered strokes or load the chair/whale/smile previews, then explicitly execute; startup and asset selection never move the arm. The white Reset button clears the composite simulation ink in one operation.
+
+
+### Real board drawing (measured profile)
+
+`config/board_real.yaml` in `tictactoe_motion` stores a separate inward rectangle
+(138.004 x 177.005 mm), writing link6 Z=0.206 m, hover Z=0.216 m.
+Original four-corner pose/screenshot records are not overwritten. Screen-right maps
+to base -X, screen-down to base +Y; this is not camera-to-base TF calibration.
+The calibration assumes the same fixed board, pen mounting and clear orientation.
+
+The real localization workbench now offers X, O and a 3x3 grid at the canvas center.
+The dimension is the X square edge, O diameter, or grid total edge (8..60 mm).
+The first physical checks should use 12 mm X/O; speed is limited to 5%.
+Drawing executes immediately, preserves orientation, lifts before lateral transfer,
+and finishes hovering. Move to the verified clear orientation first; a different
+orientation is rejected before motion. Stop and feedback-loss handling stay active.
+The API accepts `kind=draw`, `shape=x|o|grid`, metric `size`, `speed`, and optional
+normalized `center=[u,v]`. Geometry is validated before any drawing movement.
+`motion_completed` does not assert visible ink: `ink_confirmed` remains null.
+Simulation retains its previous canvas, renderer and reset semantics; this real
+workbench entry is rejected in simulation. Real drawing ink acceptance is pending.

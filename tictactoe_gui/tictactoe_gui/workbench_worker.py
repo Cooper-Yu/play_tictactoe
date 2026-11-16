@@ -140,7 +140,7 @@ def workbench_worker(session):
 
     def perform(command):
         kind = command['kind']
-        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute', 'reset'):
+        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute', 'reset', 'draw'):
             driver.preflight()
         if not driver.node.feedback_is_fresh():
             raise RuntimeError('关节反馈已过期')
@@ -186,6 +186,38 @@ def workbench_worker(session):
             session.update(plan=None, reset_result=None)
             result = ResetAction(driver, lambda stage: session.update(message=stage)).run(command['speed'])
             session.update(reset_result=result)
+        elif kind == 'draw':
+            from pathlib import Path
+            import yaml
+            from ament_index_python.packages import get_package_share_directory
+            from tictactoe_motion.board_canvas import BoardCanvas
+            from tictactoe_motion.drawing_actions import DrawingActions
+            if session.environment != 'real':
+                raise ValueError('Real drawing profile required')
+            profile_path = Path(get_package_share_directory('tictactoe_motion'))/'config/board_real.yaml'
+            profile = yaml.safe_load(profile_path.read_text())
+            canvas = BoardCanvas(profile)
+            if canvas.environment != session.environment:
+                raise ValueError('Drawing environment mismatch')
+            if command['speed'] > profile['max_velocity_scaling']:
+                raise ValueError('Drawing speed exceeds the calibrated profile limit')
+            actions = DrawingActions(canvas, driver)
+            center, size = command['center'], command['size']
+            if command['shape'] == 'x':
+                strokes = actions.x_strokes(center, size)
+            elif command['shape'] == 'o':
+                strokes = actions.o_strokes(center, size/2)
+            else:
+                strokes = actions.grid_strokes(center, size, size)
+            # Complete geometry validation before invalidating plans or moving.
+            drawing = actions._prepare(strokes)
+            driver.node.invalidate_plan()
+            session.update(plan=None, drawing_result=None)
+            driver.parameters(velocity_scaling=command['speed'], acceleration_scaling=command['speed'])
+            stages = drawing.run(driver, cancelled=session.stop.is_set,
+                                 on_stage=lambda stage: session.update(message='绘图：'+stage))
+            session.update(drawing_result=dict(motion_completed=True, ink_confirmed=None,
+                                               shape=command['shape'], stages=stages))
         elif kind == 'record':
             driver.until(lambda: camera['received'] is not None and time.monotonic()-camera['received'] < 2., 8)
             driver.parameters(record_name=command['name'], overwrite=command['overwrite'])
@@ -270,7 +302,7 @@ def workbench_worker(session):
                 if session.stop.is_set():
                     raise RuntimeError('操作已取消')
                 perform(command)
-                session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '操作完成'))
+                session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '绘图运动完成，已抬笔；请检查实际笔迹' if command['kind'] == 'draw' else '操作完成'))
             except Exception as error:
                 driver.node.invalidate_plan()
                 if driver.execution.is_executing:

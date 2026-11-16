@@ -1,0 +1,17 @@
+# Measured real board; original corner records remain unchanged.
+# Screen TL, TR, BR, BL, expressed as link6/base_link meters.
+environment: real
+frame_id: base_link
+canvas_axes: negative_x_positive_y
+safe_corners:
+  - [0.30281526626366445, -0.0815436884963637, 0.206]
+  - [0.16481163150262748, -0.0815436884963637, 0.206]
+  - [0.16481163150262748, 0.09546155073238966, 0.206]
+  - [0.30281526626366445, 0.09546155073238966, 0.206]
+grid_spacing_m: 0.0005
+drawing_link6_z_m: 0.206
+hover_link6_z_m: 0.216
+# link6 reference; not a calibrated physical pen TCP.
+required_orientation_xyzw: [0.0, 1.0, 0.0, 0.0]
+orientation_tolerance_rad: 0.03
+max_velocity_scaling: 0.05
