@@ -32,6 +32,8 @@ class MotionPlanner(Node):
         self.plan_goal_handle = None
         self.is_recording = False
         self.last_joint_state_received = None
+        self.feedback_timing = dict(last_gap_s=None, max_gap_s=0., gap_ended_at_s=None,
+                                    source_stamp_delta_s=None)
         self.joint_state_subscription = self.create_subscription(
             JointState, self.settings["joint_states_topic"], self.joint_state_callback, 10
         )
@@ -71,9 +73,34 @@ class MotionPlanner(Node):
         return super().destroy_node()
 
     def joint_state_callback(self, msg):
+        now = time.monotonic()
+        if self.last_joint_state_received is not None:
+            gap = now-self.last_joint_state_received
+            old = self.current_joint_state.header.stamp
+            new = msg.header.stamp
+            self.feedback_timing.update(
+                last_gap_s=gap, max_gap_s=max(gap, self.feedback_timing['max_gap_s']),
+                gap_ended_at_s=now,
+                source_stamp_delta_s=(new.sec-old.sec)+(new.nanosec-old.nanosec)*1e-9)
         self.current_joint_state = msg
         self.joint_state_sequence += 1
-        self.last_joint_state_received = time.monotonic()
+        self.last_joint_state_received = now
+
+    def feedback_snapshot(self, now=None):
+        """! @brief Observe reception/source timing without changing the freshness gate.
+
+        Reception gaps include executor scheduling delay. Source age uses the ROS
+        clock and can also reflect clock mismatch; neither alone proves network loss.
+        """
+        now = time.monotonic() if now is None else now
+        received = self.last_joint_state_received
+        source_age = None
+        if self.current_joint_state is not None:
+            stamp = self.current_joint_state.header.stamp
+            source_age = self.get_clock().now().nanoseconds*1e-9-stamp.sec-stamp.nanosec*1e-9
+        return dict(self.feedback_timing, sequence=self.joint_state_sequence,
+                    received_at_s=received, receipt_age_s=None if received is None else now-received,
+                    source_age_s=source_age, limit_s=self.settings['feedback_max_age'])
 
     def feedback_is_fresh(self, max_age=None):
         """! @brief Check reception age using the monotonic clock, not ROS timestamps."""

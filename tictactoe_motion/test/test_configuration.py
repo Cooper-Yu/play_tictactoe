@@ -94,3 +94,35 @@ def test_settle_count_and_return_constraints_use_configuration(node, monkeypatch
             assert joint.tolerance_below == 0.0002
     finally:
         recording.close()
+
+def test_feedback_diagnostics_preserve_stale_gate_and_distinguish_clocks(node, monkeypatch):
+    import tictactoe_motion.motion_planner as planner_module
+    clock = Mock()
+    clock.now.return_value.nanoseconds = 20_000_000_000
+    monkeypatch.setattr(node, 'get_clock', lambda: clock)
+    now = [100.0]
+    monkeypatch.setattr(planner_module.time, 'monotonic', lambda: now[0])
+    empty = node.feedback_snapshot()
+    assert empty['receipt_age_s'] is None and empty['source_age_s'] is None
+    assert not node.feedback_is_fresh()
+    first = JointState()
+    first.header.stamp.sec = 19
+    node.joint_state_callback(first)
+    now[0] = 101.1
+    stale = node.feedback_snapshot()
+    assert stale['receipt_age_s'] == pytest.approx(1.1)
+    assert stale['source_age_s'] == pytest.approx(1.0)
+    assert not node.feedback_is_fresh()
+    # Reading diagnostics must never renew feedback or loosen the configured limit.
+    assert node.last_joint_state_received == 100.0 and stale['limit_s'] == 1.0
+    second = JointState()
+    second.header.stamp.sec = 19
+    second.header.stamp.nanosec = 2_000_000
+    node.joint_state_callback(second)
+    resumed = node.feedback_snapshot()
+    assert resumed['last_gap_s'] == pytest.approx(1.1)
+    assert resumed['max_gap_s'] == pytest.approx(1.1)
+    assert resumed['source_stamp_delta_s'] == pytest.approx(.002)
+    assert resumed['sequence'] == 2 and node.feedback_is_fresh()
+    resumed['max_gap_s'] = 0
+    assert node.feedback_snapshot()['max_gap_s'] == pytest.approx(1.1)

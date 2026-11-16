@@ -32,6 +32,7 @@ def workbench_worker(session):
     matched_shot = {'frame': None}
     stopping = {'handled': False}
     last_publish = {'at': 0., 'topics': 0.}
+    tick_timing = {'previous_at_s': None, 'last_gap_s': None, 'max_gap_s': 0.}
 
     def image_received(msg):
         try:
@@ -82,8 +83,15 @@ def workbench_worker(session):
 
     def tick():
         now = time.monotonic()
+        previous = tick_timing['previous_at_s']
+        if previous is not None:
+            gap = now-previous
+            tick_timing.update(last_gap_s=gap, max_gap_s=max(gap, tick_timing['max_gap_s']))
+        tick_timing['previous_at_s'] = now
+        timing = dict(joints=driver.node.feedback_snapshot(now), executor_tick=dict(tick_timing))
         if (session.environment == 'real' and driver.execution.is_executing
                 and not driver.node.feedback_is_fresh() and not session.stop.is_set()):
+            print('WORKBENCH_FEEDBACK_STALE '+json.dumps(timing), flush=True)
             received = driver.node.last_joint_state_received
             age = now-received if received is not None else None
             session.request_stop('执行中关节反馈过期：age='+str(age)
@@ -111,7 +119,8 @@ def workbench_worker(session):
         threshold = min(10., max(5., 3*(camera['period_s'] or 0.)))
         meta.update(age_s=age, fresh=age is not None and age < threshold,
                     stale_after_s=threshold, fps=1/camera['period_s'] if camera['period_s'] else None)
-        values = dict(pose=pose, joints=joints, fresh=fresh and pose is not None, camera=meta)
+        values = dict(pose=pose, joints=joints, fresh=fresh and pose is not None, camera=meta,
+                      feedback_diagnostics=timing)
         if now-last_publish['topics'] > 2:
             last_publish['topics'] = now
             values['topics'] = sorted(name for name, types in driver.client.get_topic_names_and_types()
