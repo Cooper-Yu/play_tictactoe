@@ -316,7 +316,7 @@ The calibration assumes the same fixed board, pen mounting and clear orientation
 
 The real localization workbench now offers X, O and a 3x3 grid at the canvas center.
 The dimension is the X square edge, O diameter, or grid total edge (8..60 mm).
-The first physical checks should use 12 mm X/O; speed is limited to 5%.
+The first physical checks should use 12 mm X/O; speed is limited to 10% (raised at the user request after the initial 5% tests).
 Drawing executes immediately, preserves orientation, lifts before lateral transfer,
 and finishes hovering. Move to the verified clear orientation first; a different
 orientation is rejected before motion. Stop and feedback-loss handling stay active.
@@ -336,3 +336,7 @@ check that the board cleared (user instruction, 2026-11-16). Stops now retain
 Later cleanup stop requests preserve the initial cause; feedback-loss thresholds
 are unchanged. Earlier interrupted runs had no such audit and are not assigned a
 root cause retrospectively.
+
+Real drawing and normal jog controls now default to 10% speed scaling. Both the
+request validator and board profile cap drawing at 10%; 5% remains selectable.
+ResetAction retains its independent 5% cap. Feedback freshness remains 1.0 s.

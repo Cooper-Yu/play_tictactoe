@@ -31,7 +31,7 @@ class BoardCanvas:
             if (len(orientation) != 4 or not all(math.isfinite(v) for v in orientation)
                     or abs(sum(v*v for v in orientation)-1) > .001
                     or not math.isfinite(tolerance) or not 0 < tolerance <= .05
-                    or not math.isfinite(speed) or not 0 < speed <= .05):
+                    or not math.isfinite(speed) or not 0 < speed <= .1):
                 raise ValueError('Real drawing orientation/speed profile is invalid')
             writing = profile.get('drawing_link6_z_m', float('nan'))
             hover = profile.get('hover_link6_z_m', float('nan'))

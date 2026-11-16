@@ -92,8 +92,8 @@ def validate_command(data, environment='sim'):
                 or any(isinstance(v, bool) or not isinstance(v, (int, float))
                        or not math.isfinite(v) or not 0 <= v <= 1 for v in center)):
             raise ValueError('图形中心必须在画布范围 [0, 1] 内')
-        if result['speed'] > .05:
-            raise ValueError('初版真机绘图速度缩放上限为 5%')
+        if result['speed'] > .1:
+            raise ValueError('真机绘图速度缩放上限为 10%')
         result.update(shape=shape, size=float(size), center=list(center))
     if kind in ('preset', 'record', 'return', 'delete'):
         name = data.get('name')
