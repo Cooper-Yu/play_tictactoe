@@ -19,7 +19,7 @@ async function post(path, data) {
 async function command(data) {
   if (requestBusy) return;
   requestBusy = true; renderControls();
-  try { await post('/api/command', data); await poll(); }
+  try { await post('api/command', data); await poll(); }
   catch (error) {toast(error.message);}
   finally {requestBusy = false; renderControls();}
 }
@@ -46,7 +46,7 @@ function renderRecords() {
     detail.textContent = records[name] ? (records[name].screenshot ? '已记录 · 已关联截图' : '已记录 · 无匹配截图') : '等待记录'; button.append(detail);
     if (records[name]?.screenshot) {
       const img = document.createElement('img'); img.alt = name+' 记录截图';
-      img.src = '/api/snapshot?name='+encodeURIComponent(name)+'&v='+encodeURIComponent(JSON.stringify(records[name].pose_stamped.header.stamp)); button.append(img);
+      img.src = 'api/snapshot?name='+encodeURIComponent(name)+'&v='+encodeURIComponent(JSON.stringify(records[name].pose_stamped.header.stamp)); button.append(img);
     }
     button.onclick = () => {selected=name; $('record-name').value=name; renderRecords(); renderControls();};
     $('records').append(button);
@@ -91,7 +91,7 @@ function render() {
   renderRecords(); renderControls();
 }
 async function poll() {
-  try {const response=await fetch('/api/status'); if(!response.ok) throw new Error('连接失败'); state=await response.json();render();}
+  try {const response=await fetch('api/status'); if(!response.ok) throw new Error('连接失败'); state=await response.json();render();}
   catch(error) {state={...state,state:'offline',fresh:false,camera:{...state.camera,fresh:false},plan:null,message:'工作台连接中断'};render();}
 }
 function drawRaw() {
@@ -126,7 +126,7 @@ async function refreshImages() {
   try {
     const query=new URLSearchParams({beta:$('brightness').value,t:String(sequence)});
     if(roi)query.set('roi',roi.join(','));
-    const [original,processed]=await Promise.all([loadImage('/api/frame?t='+sequence),loadImage('/api/frame?'+query)]);
+    const [original,processed]=await Promise.all([loadImage('api/frame?t='+sequence),loadImage('api/frame?'+query)]);
     if(state.camera?.fresh && topic===state.camera.topic && revision===betaRevision) {
       rawImage=original;drawRaw();
       enhanced.width=raw.width;enhanced.height=raw.height;
@@ -145,9 +145,9 @@ for(const button of document.querySelectorAll('[data-axis]'))button.onclick=()=>
 $('switch-camera').onclick=()=>command({kind:'camera',topic:$('topic').value});
 $('plan-preset').onclick=()=>command({kind:'preset',name:$('preset').value,speed:Number($('speed').value)});
 $('execute').onclick=()=>command({kind:'execute'});
-$('stop').onclick=async()=>{try{await post('/api/stop',{});await poll();}catch(error){toast(error.message);}};
+$('stop').onclick=async()=>{try{await post('api/stop',{});await poll();}catch(error){toast(error.message);}};
 $('record').onclick=()=>command({kind:'record',name:$('record-name').value,overwrite:$('overwrite').checked});
 $('return').onclick=()=>command({kind:'return',name:selected,speed:Number($('speed').value)});
 $('delete').onclick=()=>{if(confirm(`删除记录「${selected}」？`))command({kind:'delete',name:selected});};
-async function start(){try{const response=await fetch('/api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('工作台连接失败，请刷新页面');}}
+async function start(){try{const response=await fetch('api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('工作台连接失败，请刷新页面');}}
 start();

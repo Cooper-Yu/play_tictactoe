@@ -117,3 +117,21 @@ Runtime code:
 - Motion package `simulation_driver.py` / `simulation_scene.py`: the previously
   verified simulation driver promoted from test helpers; old helpers retain
   compatibility imports. No planning/controller limits were relaxed.
+
+### The Construct: open the workstation in a browser tab
+
+Keep the workstation backend on localhost:8765. In a second cloud terminal:
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/.play_tictactoe_runtime/install/setup.bash
+python3 -m tictactoe_gui.cloud_gateway --public-url "$(webpage_address)"
+```
+
+The gateway listens on port 7000, which the platform exposes at the HTTPS URL
+printed by `webpage_address`. Open that URL in a separate browser tab. The page
+uses relative asset/API paths so the platform's `/webpage/` prefix is retained.
+The gateway accepts POST requests only from that exact public origin; the backend
+still checks its per-session token, robot readiness and motion limits. No Firefox
+or graphical desktop is required. Restart this gateway with the new URL after a
+platform slot changes. Keep the ROS backend and MoveIt running independently.
