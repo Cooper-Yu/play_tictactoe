@@ -48,7 +48,15 @@ class CanvasDrawing(StrokeDrawing):
         transfer_z = max(upper.position.z, self.upper_z) if self.canvas.environment == 'real' else self.upper_z
         upper.position.z=transfer_z
         on_stage('approach')
-        result=driver.linear(upper.position) if self.canvas.environment == 'real' else driver.pose(upper)
+        actual = driver.current_pose().position
+        distance = math.dist((actual.x,actual.y,actual.z),
+                             (upper.position.x,upper.position.y,upper.position.z))
+        if self.canvas.environment == 'real' and distance <= 0.00001:
+            # A <=10 micrometer approach is already satisfied; do not execute a zero-length plan.
+            result = dict(passed=True, skipped=True, reason='already_at_approach',
+                          position_error_m=distance, orientation_error_rad=0.)
+        else:
+            result=driver.linear(upper.position) if self.canvas.environment == 'real' else driver.pose(upper)
         if not isinstance(result,dict) or result.get('passed') is not True:raise RuntimeError('Canvas approach failed')
         self.results.append({'stage':'approach','result':copy.deepcopy(result)})
         if self.canvas.environment == 'real' and transfer_z > self.upper_z+0.0001:

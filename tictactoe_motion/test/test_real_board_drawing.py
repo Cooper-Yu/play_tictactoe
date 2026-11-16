@@ -86,3 +86,27 @@ def test_high_start_transfers_without_diagonal_descent():
     assert d.calls[1][1].position.z == .216
     assert d.calls[0][1].position.x == d.calls[1][1].position.x
     assert d.calls[0][1].position.y == d.calls[1][1].position.y
+
+
+@pytest.mark.parametrize('offset',[0.,.000002])
+def test_resume_at_existing_approach_does_not_request_zero_length_plan(offset):
+    d=real_driver();a=DrawingActions(BoardCanvas(profile()),d)
+    path=a._prepare(a.x_strokes()).paths[0]
+    d.actual.position.x=path[0][0]+offset
+    d.actual.position.y=path[0][1]
+    d.actual.position.z=.216
+    result=a.draw_x()
+    assert result['stages'][0]['result']['skipped'] is True
+    assert d.calls[0][1].position.z == .206
+    assert len([value for kind,value in d.calls if kind=='path']) == 2
+    assert d.actual.position.z == .216
+
+
+def test_approach_outside_noop_tolerance_still_moves_at_hover_height():
+    d=real_driver();a=DrawingActions(BoardCanvas(profile()),d)
+    path=a._prepare(a.x_strokes()).paths[0]
+    d.actual.position.x=path[0][0]+.0001
+    d.actual.position.y=path[0][1];d.actual.position.z=.216
+    result=a.draw_x()
+    assert not result['stages'][0]['result'].get('skipped',False)
+    assert d.calls[0][1].position.z == .216
