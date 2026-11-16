@@ -89,3 +89,13 @@ def test_http_requires_token_and_preserves_ack_result_boundary(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+@pytest.mark.parametrize('shape', ['smile', 'docker', 'chair'])
+def test_real_illustrations_keep_existing_motion_boundary(shape):
+    command = dict(kind='draw', shape=shape, size=.05, center=[.5,.5], speed=.1)
+    assert validate_command(command, 'real')['shape'] == shape
+    with pytest.raises(ValueError): validate_command(command, 'sim')
+    with pytest.raises(ValueError): validate_command(dict(command, size=.061), 'real')
+    with pytest.raises(ValueError): validate_command(dict(command, speed=.11), 'real')
+    with pytest.raises(ValueError): validate_command(dict(command, shape='../chair'), 'real')

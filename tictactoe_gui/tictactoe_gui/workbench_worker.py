@@ -217,21 +217,34 @@ def workbench_worker(session):
                 raise ValueError('Drawing speed exceeds the calibrated profile limit')
             actions = DrawingActions(canvas, driver)
             center, size = command['center'], command['size']
-            if command['shape'] == 'x':
-                strokes = actions.x_strokes(center, size)
-            elif command['shape'] == 'o':
-                strokes = actions.o_strokes(center, size/2)
+            if command['shape'] in ('smile', 'docker', 'chair'):
+                from tictactoe_motion.illustration_drawing import IllustrationDrawing
+                illustration = IllustrationDrawing(actions)
+                strokes = illustration.strokes(command['shape'], center=center, width=size)
+                drawings = illustration._batches(strokes)
             else:
-                strokes = actions.grid_strokes(center, size, size)
-            # Complete geometry validation before invalidating plans or moving.
-            drawing = actions._prepare(strokes)
+                if command['shape'] == 'x':
+                    strokes = actions.x_strokes(center, size)
+                elif command['shape'] == 'o':
+                    strokes = actions.o_strokes(center, size/2)
+                else:
+                    strokes = actions.grid_strokes(center, size, size)
+                drawings = [actions._prepare(strokes)]
+            # Validate every batch against real heights/bounds before any movement.
             driver.node.invalidate_plan()
-            session.update(plan=None, drawing_result=None)
+            session.update(plan=None, drawing_result=None, drawing_progress=None)
             driver.parameters(velocity_scaling=command['speed'], acceleration_scaling=command['speed'])
-            stages = drawing.run(driver, cancelled=session.stop.is_set,
-                                 on_stage=lambda stage: session.update(message='绘图：'+stage))
+            stages = []
+            for index, drawing in enumerate(drawings, 1):
+                def on_stage(stage):
+                    session.update(message='绘图：'+stage,
+                                   drawing_progress=dict(shape=command['shape'], batch=index,
+                                                         batches=len(drawings), stage=stage,
+                                                         completed_batches=index-1,
+                                                         completed_stages=len(stages)))
+                stages.extend(drawing.run(driver, cancelled=session.stop.is_set, on_stage=on_stage))
             session.update(drawing_result=dict(motion_completed=True, ink_confirmed=None,
-                                               shape=command['shape'], stages=stages))
+                                               shape=command['shape'], strokes=len(strokes), stages=stages))
         elif kind == 'record':
             driver.until(lambda: camera['received'] is not None and time.monotonic()-camera['received'] < 2., 8)
             driver.parameters(record_name=command['name'], overwrite=command['overwrite'])

@@ -83,8 +83,8 @@ def validate_command(data, environment='sim'):
         shape = data.get('shape')
         size = data.get('size', .012)
         center = data.get('center', [.5, .5])
-        if shape not in ('x', 'o', 'grid'):
-            raise ValueError('图形必须是 x / o / grid')
+        if shape not in ('x', 'o', 'grid', 'smile', 'docker', 'chair'):
+            raise ValueError('未知的已校验绘图素材')
         if (isinstance(size, bool) or not isinstance(size, (int, float))
                 or not math.isfinite(size) or not .008 <= size <= .06):
             raise ValueError('图形尺寸必须在 8–60 mm 内')

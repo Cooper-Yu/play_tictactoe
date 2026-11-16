@@ -110,3 +110,14 @@ def test_approach_outside_noop_tolerance_still_moves_at_hover_height():
     result=a.draw_x()
     assert not result['stages'][0]['result'].get('skipped',False)
     assert d.calls[0][1].position.z == .216
+
+
+@pytest.mark.parametrize('name', ['smile', 'docker', 'chair'])
+def test_illustrations_use_real_heights_and_preserve_separate_strokes(name):
+    from tictactoe_motion.illustration_drawing import IllustrationDrawing
+    d=real_driver();a=DrawingActions(BoardCanvas(profile()),d)
+    drawing=IllustrationDrawing(a)
+    result=drawing.draw(name,width=.05)
+    assert result['passed'] and result['strokes'] > 1
+    assert d.actual.position.z == pytest.approx(.216)
+    assert all(stage['result']['passed'] for stage in result['stages'])

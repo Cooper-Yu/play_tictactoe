@@ -12,7 +12,7 @@ def test_real_drawing_request(shape,speed):
 
 
 @pytest.mark.parametrize('change',[
-    {'shape':'chair'},{'size':True},{'size':.1},{'size':float('nan')},
+    {'shape':'unknown'},{'size':True},{'size':.1},{'size':float('nan')},
     {'speed':.11},{'center':[2,.5]},{'center':[False,.5]},{'center':[.5]}])
 def test_invalid_request_rejected(change):
     data=dict(kind='draw',shape='x',size=.012,speed=.05);data.update(change)
