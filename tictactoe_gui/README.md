@@ -161,3 +161,33 @@ Positive local brightness contrast suppresses uniformly blue-tinted background.
 No stroke dilation, line completion or image reconstruction is performed. The
 source image and saved original screenshots remain unchanged. This is a viewing
 aid, not a pressure measurement or a certified stroke-detection result.
+
+### Real calibrated drawing canvas
+
+Open `/canvas` from the running localization workstation (or append `canvas` to
+its public `/webpage/` URL). The header links back to the localization page.
+This is a second view of the same serialized workstation, not another ROS
+node or another motion driver. Keep the existing real launch and gateway.
+
+Draw with the mouse/touch pen; releasing finishes a stroke. Undo and Clear Draft
+only edit the draft. Execute submits the complete ordered draft explicitly.
+The white tablet button performs the real recorded Reset cycle; Stop uses the
+same cancellation boundary as the localization workstation. No request is
+replayed automatically after a timeout or connection loss.
+
+- Actual calibrated area: about 138.004 by 177.005 mm, with a further 1 mm
+  footprint margin. Screen right maps to base -X and down to +Y.
+- Drawing Z206 mm, hover Z216 mm and the clear orientation come from
+  `board_real.yaml`. Speeds are 5% or 10%; feedback protection is unchanged.
+- Up to 32 source strokes / 8000 points; geometry is checked before any motion.
+  Long strokes (>60 mm), dense paths or sharp reversals are lifted and split
+  while preserving the source order. The backend does not smooth the drawing.
+- Chair, whale and smile buttons load editable 60-mm previews; they never start
+  motion. Live camera, source-stroke progress and execution segments appear on
+  the same page. Motion completion does not claim visual ink confirmation.
+- Per-job input, prepared paths, stage evidence and failure/completion reports
+  are saved under the active localization data directory's `canvas/` subfolder.
+  A stopped drawing is not automatically resumed.
+
+The original standalone simulation canvas and its 180-degree mapping remain
+separate. Do not launch that simulation driver against a real arm.

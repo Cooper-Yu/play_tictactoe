@@ -4,7 +4,7 @@ import json
 from importlib.resources import files
 
 
-def load_illustration(name, width=.06):
+def load_illustration(name, width=.06, *, board_width=.144, board_height=.193, flip=True):
     """! @brief Fit one bundled vector asset onto the editable tablet preview.
 
     The inverse screen map exactly reproduces the existing 60-mm/180-degree
@@ -13,21 +13,15 @@ def load_illustration(name, width=.06):
     if name not in ('chair', 'docker', 'smile'):
         raise ValueError('未知素材')
     asset=json.loads(files('tictactoe_motion').joinpath('illustrations',name+'.json').read_text())
-    strokes=[[[.5+(u-.5)*width/(.144-.002),
-               .5+(v-.5)*(width/asset['aspect'])/(.193-.002)] for u,v in stroke]
+    strokes=[[[.5+(u-.5)*width/(board_width-.002),
+               .5+(v-.5)*(width/asset['aspect'])/(board_height-.002)] for u,v in stroke]
              for stroke in asset['strokes']]
-    prepare_strokes(strokes)
+    prepare_strokes(strokes, width=board_width, height=board_height, flip=flip)
     return {'name':name, 'width_mm':width*1000, 'strokes':strokes}
 
 
-def prepare_strokes(strokes, width=.144, height=.193):
-    """! @brief Map screen points to board coordinates and split bounded subpaths.
-
-    Input is 1..32 screen-space strokes of normalized [x,y] coordinates.
-    The existing simulated camera/board orientation requires a 180-degree map.
-    No smoothing changes the user's curve; only duplicate submicron samples
-    are removed. Long paths or sharp reversals receive explicit lifted splits.
-    """
+def validate_strokes(strokes):
+    """! @brief Copy bounded normalized input without choosing a robot mapping."""
     if not isinstance(strokes, list) or not 1 <= len(strokes) <= 32:
         raise ValueError('需要 1–32 笔')
     if sum(len(s) if isinstance(s, list) else 10001 for s in strokes) > 8000:
@@ -36,16 +30,41 @@ def prepare_strokes(strokes, width=.144, height=.193):
     for number, stroke in enumerate(strokes, 1):
         if not isinstance(stroke, list) or not 2 <= len(stroke) <= 2000:
             raise ValueError(f'第 {number} 笔需要 2–2000 个点')
-        points = []
+        row = []
         for point in stroke:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 raise ValueError('每个点必须包含 x、y')
             if any(isinstance(v, bool) or not isinstance(v, (int, float))
                    or not math.isfinite(v) or not 0 <= v <= 1 for v in point):
                 raise ValueError('坐标必须在画布内 [0,1]')
+            row.append([float(v) for v in point])
+        result.append(row)
+    return result
+
+
+def prepare_strokes(strokes, width=.144, height=.193, *, flip=True):
+    """! @brief Map screen points to board coordinates and split bounded subpaths.
+
+    Input is 1..32 screen-space strokes of normalized [x,y] coordinates.
+    The legacy simulation map defaults to 180 degrees; real board input uses
+    flip=False and the measured physical width/height.
+    No smoothing changes the user's curve; only duplicate submicron samples
+    are removed. Long paths or sharp reversals receive explicit lifted splits.
+    """
+    strokes = validate_strokes(strokes)
+    if (any(isinstance(v, bool) or not isinstance(v, (int, float))
+            or not math.isfinite(v) or v <= .002 for v in (width, height))
+            or not isinstance(flip, bool)):
+        raise ValueError('无效画布尺寸或方向')
+    result = []
+    for number, stroke in enumerate(strokes, 1):
+        points = []
+        for point in stroke:
             # Leave room for the fixed-width pen at every screen edge.
-            mapped = [1-.001/width-point[0]*(1-.002/width),
-                      1-.001/height-point[1]*(1-.002/height)]
+            mapped = [.001/width+point[0]*(1-.002/width),
+                      .001/height+point[1]*(1-.002/height)]
+            if flip:
+                mapped = [1-mapped[0], 1-mapped[1]]
             if not points:
                 points.append(mapped)
             elif metric_distance(mapped, points[-1], width, height) >= .00001:

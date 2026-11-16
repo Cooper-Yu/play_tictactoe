@@ -58,7 +58,7 @@ def enhance_frame(frame, query):
 def validate_command(data, environment='sim'):
     """! @brief Validate browser requests before they reach the ROS queue."""
     kind = data.get('kind')
-    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera', 'reset', 'draw'):
+    if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera', 'reset', 'draw', 'canvas'):
         raise ValueError('未知操作')
     result = {'kind': kind}
     if kind == 'jog':
@@ -71,12 +71,17 @@ def validate_command(data, environment='sim'):
                 or not math.isfinite(distance) or not 0 < abs(distance) <= limit):
             raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
         result.update(axis=axis, distance=float(distance))
-    if kind in ('jog', 'preset', 'return', 'reset', 'draw'):
+    if kind in ('jog', 'preset', 'return', 'reset', 'draw', 'canvas'):
         speed = data.get('speed', .1)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))
                 or not math.isfinite(speed) or not .01 <= speed <= (.1 if environment == 'real' else .3)):
             raise ValueError('速度缩放超出当前环境范围')
         result['speed'] = float(speed)
+    if kind == 'canvas':
+        from tictactoe_gui.geometry import validate_strokes
+        if environment != 'real':
+            raise ValueError('此画布使用真机标定；仿真保留原画布入口')
+        result['strokes'] = validate_strokes(data.get('strokes'))
     if kind == 'draw':
         if environment != 'real':
             raise ValueError('此绘图入口只使用真机标定配置；仿真请使用原画布入口')
@@ -198,7 +203,21 @@ def make_handler(session):
             if url.path == '/api/status':
                 return self.send(200, session.status())
             if url.path == '/api/config':
-                return self.send(200, {'token': session.token, 'environment': session.environment})
+                return self.send(200, {'token': session.token, 'environment': session.environment,
+                                       'canvas': session.status().get('canvas')})
+            if url.path.startswith('/api/canvas/asset/'):
+                from tictactoe_gui.geometry import load_illustration
+                dimensions = session.status().get('canvas')
+                if not dimensions:
+                    return self.send(503, {'error': '画布标定尚未就绪'})
+                try:
+                    asset = load_illustration(url.path.rsplit('/', 1)[-1],
+                                              board_width=dimensions['width_mm']/1000,
+                                              board_height=dimensions['height_mm']/1000,
+                                              flip=False)
+                    return self.send(200, asset)
+                except ValueError as error:
+                    return self.send(404, {'error': str(error)})
             if url.path == '/api/frame':
                 frame = session.frame('live')
                 if frame and 'beta' in parse_qs(url.query):
@@ -212,6 +231,9 @@ def make_handler(session):
                 frame = session.frame('record:'+name)
                 return self.send(200, frame, 'image/jpeg') if frame else self.send(404, {'error': '无关联截图'})
             static = {'/': ('workbench.html', 'text/html; charset=utf-8'),
+                      '/canvas': ('canvas.html', 'text/html; charset=utf-8'),
+                      '/canvas.js': ('canvas.js', 'text/javascript; charset=utf-8'),
+                      '/canvas.css': ('canvas.css', 'text/css; charset=utf-8'),
                       '/workbench.js': ('workbench.js', 'text/javascript; charset=utf-8'),
                       '/workbench.css': ('workbench.css', 'text/css; charset=utf-8')}
             if url.path not in static:
@@ -227,7 +249,7 @@ def make_handler(session):
                 return self.send(403, {'error': '请求来源无效'})
             try:
                 size = int(self.headers.get('Content-Length', '0'))
-                if not 0 < size <= 4096:
+                if not 0 < size <= (512000 if self.path == '/api/canvas' else 4096):
                     raise ValueError('请求体过大或为空')
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
@@ -235,6 +257,9 @@ def make_handler(session):
                 if self.path == '/api/stop':
                     session.request_stop()
                     return self.send(202, {'accepted': True})
+                if self.path == '/api/canvas':
+                    return self.send(202, {'accepted': True,
+                                           'job': session.submit(dict(data, kind='canvas'))})
                 if self.path != '/api/command':
                     return self.send(404, {'error': 'Not found'})
                 self.send(202, {'accepted': True, 'job': session.submit(data)})

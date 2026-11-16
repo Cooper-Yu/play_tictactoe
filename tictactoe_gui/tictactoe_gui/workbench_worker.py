@@ -25,6 +25,17 @@ def workbench_worker(session):
         driver = RealRobotDriver(session.output, install_signal_handlers=False)
     else:
         driver = SimulationDriver(session.output, install_signal_handlers=False)
+    real_canvas = None
+    if session.environment == 'real':
+        from pathlib import Path
+        import yaml
+        from ament_index_python.packages import get_package_share_directory
+        from tictactoe_motion.board_canvas import BoardCanvas
+        profile_path = Path(get_package_share_directory('tictactoe_motion'))/'config/board_real.yaml'
+        real_canvas = BoardCanvas(yaml.safe_load(profile_path.read_text()))
+        session.update(canvas=dict(width_mm=(real_canvas.x1-real_canvas.x0)*1000,
+                                   height_mm=(real_canvas.y1-real_canvas.y0)*1000,
+                                   margin_mm=1., max_strokes=32, max_points=8000))
     bridge = CvBridge()
     camera = {'subscription': None, 'topic': '', 'received': None, 'sequence': 0,
               'error': None, 'width': 0, 'height': 0, 'period_s': None}
@@ -154,7 +165,7 @@ def workbench_worker(session):
 
     def perform(command):
         kind = command['kind']
-        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute', 'reset', 'draw'):
+        if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute', 'reset', 'draw', 'canvas'):
             driver.preflight()
         if not driver.node.feedback_is_fresh():
             raise RuntimeError('关节反馈已过期')
@@ -250,6 +261,31 @@ def workbench_worker(session):
             session.update(drawing_result=dict(motion_completed=True, ink_confirmed=None,
                                                shape=command['shape'], strokes=len(strokes),
                                                skipped_strokes=command['skip_strokes'], stages=stages))
+        elif kind == 'canvas':
+            from tictactoe_gui.canvas_action import CanvasAction
+            if real_canvas is None or command['speed'] > real_canvas.profile['max_velocity_scaling']:
+                raise ValueError('真机画布标定或速度不符合配置')
+            action = CanvasAction(real_canvas, command['strokes'])
+            driver.node.invalidate_plan()
+            session.update(plan=None, drawing_result=None, drawing_progress=None)
+            driver.parameters(velocity_scaling=command['speed'], acceleration_scaling=command['speed'])
+            report = dict(input_strokes=command['strokes'], prepared=action.prepared,
+                          speed=command['speed'], environment='real', motion_completed=False)
+            directory = session.output/'canvas'
+            directory.mkdir(exist_ok=True)
+            destination = directory/(str(time.time_ns())+'-job-'+str(session.status()['job'])+'.json')
+            def progress(value):
+                session.update(message=f'画布：第 {value["source_stroke"]}/{action.input_count} 笔 · '+value['stage'],
+                               drawing_progress=value)
+            try:
+                result = action.run(driver, cancelled=session.stop.is_set, on_stage=progress)
+                report.update(result)
+                session.update(drawing_result=dict(result, report=str(destination)))
+            except BaseException as error:
+                report.update(error=str(error), stages=action.stages)
+                raise
+            finally:
+                destination.write_text(json.dumps(report, ensure_ascii=False, indent=2))
         elif kind == 'record':
             driver.until(lambda: camera['received'] is not None and time.monotonic()-camera['received'] < 2., 8)
             driver.parameters(record_name=command['name'], overwrite=command['overwrite'])
@@ -334,7 +370,7 @@ def workbench_worker(session):
                 if session.stop.is_set():
                     raise RuntimeError('操作已取消')
                 perform(command)
-                session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '绘图运动完成，已抬笔；请检查实际笔迹' if command['kind'] == 'draw' else '操作完成'))
+                session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '绘图运动完成，已抬笔；请检查实际笔迹' if command['kind'] in ('draw', 'canvas') else '操作完成'))
             except Exception as error:
                 driver.node.invalidate_plan()
                 if driver.execution.is_executing:

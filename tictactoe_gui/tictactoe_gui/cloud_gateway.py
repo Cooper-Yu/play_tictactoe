@@ -14,7 +14,9 @@ def make_gateway(public_url, upstream_port=8765):
             or parsed.port not in (None, 443) or not parsed.path.endswith('/webpage/')):
         raise ValueError('Use the exact HTTPS URL returned by webpage_address')
     origin = 'https://' + parsed.netloc
-    routes = {'/', '/workbench.js', '/workbench.css', '/api/status', '/api/config',
+    routes = {'/', '/canvas', '/canvas.js', '/canvas.css',
+              '/api/canvas', '/api/canvas/asset/chair', '/api/canvas/asset/docker',
+              '/api/canvas/asset/smile', '/workbench.js', '/workbench.css', '/api/status', '/api/config',
               '/api/frame', '/api/snapshot', '/api/command', '/api/stop'}
 
     class Gateway(BaseHTTPRequestHandler):
@@ -24,7 +26,7 @@ def make_gateway(public_url, upstream_port=8765):
         def forward(self):
             path = urlsplit(self.path).path
             if path not in routes or (self.command == 'POST' and path not in
-                                      ('/api/command', '/api/stop')):
+                                      ('/api/command', '/api/stop', '/api/canvas')):
                 self.send_error(404)
                 return
             body = None
@@ -35,7 +37,7 @@ def make_gateway(public_url, upstream_port=8765):
                     return
                 try:
                     size = int(self.headers.get('Content-Length', '0'))
-                    if not 0 < size <= 4096:
+                    if not 0 < size <= (512000 if path == '/api/canvas' else 4096):
                         raise ValueError('Invalid body size')
                 except ValueError:
                     self.send_error(400)
