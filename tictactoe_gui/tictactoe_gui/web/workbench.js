@@ -4,14 +4,14 @@ const raw = $('raw'), enhanced = $('enhanced');
 let token, state = {}, roi = null, drag = null, rawImage = null, selected = 'Reset';
 let lastSequence = -1, lastTopic = '', lastRecordKey = '', requestBusy = false;
 let betaRevision = 0, renderedRevision = -1, imageBusy = false, toastTimer;
-let appliedEnvironment = null;
+let appliedEnvironment = null, polling = false;
 const fixedNames = ['Reset', '左上', '右上', '右下', '左下'];
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => {$('toast').hidden = true;}, 4500);
 }
 async function post(path, data) {
-  const response = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(data)});
+  const response = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(data), signal:AbortSignal.timeout(5000)});
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || '请求失败');
   return result;
@@ -19,18 +19,19 @@ async function post(path, data) {
 async function command(data) {
   if (requestBusy) return;
   requestBusy = true; renderControls();
-  try { await post('api/command', data); await poll(); }
+  try { await post('api/command', data); state={...state,busy:true,state:'queued'}; void poll(); }
   catch (error) {toast(error.message);}
   finally {requestBusy = false; renderControls();}
 }
 function renderControls() {
   const blocked = requestBusy || state.busy || ['connecting','offline','blocked','stopping'].includes(state.state) || !state.fresh;
-  for (const button of document.querySelectorAll('[data-axis], #plan-preset, #record')) button.disabled = blocked;
+  for (const button of document.querySelectorAll('[data-axis], #plan-preset, #record')) button.disabled = blocked || (button.dataset.axis==='z' && Number($('step').value)>.02);
   $('execute').disabled = blocked || !state.plan;
   $('return').disabled = blocked || !state.records?.[selected];
   $('delete').disabled = blocked || !state.records?.[selected];
   $('switch-camera').disabled = requestBusy || state.busy || !state.topics?.length;
 }
+$('step').onchange=renderControls;
 function renderRecords() {
   const records = state.records || {};
   const names = [...new Set([...fixedNames, ...Object.keys(records)])];
@@ -59,6 +60,7 @@ function render() {
   if(appliedEnvironment !== state.environment && state.environment) {
     appliedEnvironment=state.environment;
     if(real) {
+      if(![...$('step').options].some(o=>o.value==='0.05')) $('step').add(new Option('50 mm (XY)','0.05'));
       for(const option of [...$('speed').options]) if(Number(option.value)>.1) option.remove();
       $('speed').value='.05';
       if(!$('speed').value)$('speed').value='0.05';
@@ -90,8 +92,11 @@ function render() {
   renderRecords(); renderControls();
 }
 async function poll() {
-  try {const response=await fetch('api/status'); if(!response.ok) throw new Error('连接失败'); state=await response.json();render();}
+  if(polling)return;
+  polling=true;
+  try {const response=await fetch('api/status',{signal:AbortSignal.timeout(3000)}); if(!response.ok) throw new Error('连接失败'); state=await response.json();render();}
   catch(error) {state={...state,state:'offline',fresh:false,camera:{...state.camera,fresh:false},plan:null,message:'工作台连接中断'};render();}
+  finally {polling=false;}
 }
 function drawRaw() {
   if(!rawImage || !state.camera?.fresh) return;
@@ -112,7 +117,7 @@ raw.onpointerup=event=>{if(!drag)return;drag.end=point(event);const candidate=no
 raw.onpointercancel=()=>{drag=null;drawRaw();};
 function updateRoi() {$('roi-label').textContent=roi ? `选区：${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : '选区：整张图';}
 async function loadImage(url) {
-  const response=await fetch(url);if(!response.ok)throw new Error('图像不可用');
+  const response=await fetch(url,{signal:AbortSignal.timeout(4000)});if(!response.ok)throw new Error('图像不可用');
   const objectUrl=URL.createObjectURL(await response.blob());
   try {const image=new Image();image.src=objectUrl;await image.decode();return image;}finally{URL.revokeObjectURL(objectUrl);}
 }

@@ -41,8 +41,8 @@ def test_jog_and_busy_stop(tmp_path):
 def test_real_commands_retain_small_step_and_speed_limits(tmp_path):
     session = WorkbenchSession(tmp_path, environment='real')
     assert session.status()['environment'] == 'real'
-    assert validate_command(dict(kind='jog', axis='x', distance=.02, speed=.1), 'real')['distance'] == .02
-    for command in [dict(kind='jog', axis='x', distance=.021), dict(kind='preset', name='clear', speed=.2)]:
+    assert validate_command(dict(kind='jog', axis='x', distance=.05, speed=.1), 'real')['distance'] == .05
+    for command in [dict(kind='jog', axis='z', distance=.05), dict(kind='jog', axis='x', distance=.051), dict(kind='preset', name='clear', speed=.2)]:
         with pytest.raises(ValueError):
             validate_command(command, 'real')
 

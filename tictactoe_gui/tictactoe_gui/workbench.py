@@ -54,7 +54,7 @@ def validate_command(data, environment='sim'):
         distance = data.get('distance')
         if axis not in ('x', 'y', 'z'):
             raise ValueError('方向必须是 x / y / z')
-        limit = .02
+        limit = .05 if environment == 'real' and axis in ('x', 'y') else .02
         if (isinstance(distance, bool) or not isinstance(distance, (int, float))
                 or not math.isfinite(distance) or not 0 < abs(distance) <= limit):
             raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
