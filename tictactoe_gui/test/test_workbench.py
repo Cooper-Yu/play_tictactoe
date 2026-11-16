@@ -99,3 +99,15 @@ def test_real_illustrations_keep_existing_motion_boundary(shape):
     with pytest.raises(ValueError): validate_command(dict(command, size=.061), 'real')
     with pytest.raises(ValueError): validate_command(dict(command, speed=.11), 'real')
     with pytest.raises(ValueError): validate_command(dict(command, shape='../chair'), 'real')
+
+
+@pytest.mark.parametrize('skip', [True, -1, 256, 1.5, '6'])
+def test_illustration_resume_rejects_invalid_index(skip):
+    with pytest.raises(ValueError):
+        validate_command(dict(kind='draw',shape='smile',skip_strokes=skip), 'real')
+
+
+def test_explicit_resume_is_limited_to_named_illustrations():
+    assert validate_command(dict(kind='draw',shape='smile',skip_strokes=6), 'real')['skip_strokes']==6
+    with pytest.raises(ValueError):
+        validate_command(dict(kind='draw',shape='x',skip_strokes=1), 'real')

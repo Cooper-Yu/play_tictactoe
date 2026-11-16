@@ -221,7 +221,10 @@ def workbench_worker(session):
                 from tictactoe_motion.illustration_drawing import IllustrationDrawing
                 illustration = IllustrationDrawing(actions)
                 strokes = illustration.strokes(command['shape'], center=center, width=size)
-                drawings = illustration._batches(strokes)
+                skip = command['skip_strokes']
+                if skip >= len(strokes):
+                    raise ValueError('续画笔画索引超出素材范围')
+                drawings = illustration._batches(strokes[skip:])
             else:
                 if command['shape'] == 'x':
                     strokes = actions.x_strokes(center, size)
@@ -241,10 +244,12 @@ def workbench_worker(session):
                                    drawing_progress=dict(shape=command['shape'], batch=index,
                                                          batches=len(drawings), stage=stage,
                                                          completed_batches=index-1,
-                                                         completed_stages=len(stages)))
+                                                         completed_stages=len(stages)+len(drawing.results),
+                                                         skipped_strokes=command['skip_strokes']))
                 stages.extend(drawing.run(driver, cancelled=session.stop.is_set, on_stage=on_stage))
             session.update(drawing_result=dict(motion_completed=True, ink_confirmed=None,
-                                               shape=command['shape'], strokes=len(strokes), stages=stages))
+                                               shape=command['shape'], strokes=len(strokes),
+                                               skipped_strokes=command['skip_strokes'], stages=stages))
         elif kind == 'record':
             driver.until(lambda: camera['received'] is not None and time.monotonic()-camera['received'] < 2., 8)
             driver.parameters(record_name=command['name'], overwrite=command['overwrite'])

@@ -94,7 +94,11 @@ def validate_command(data, environment='sim'):
             raise ValueError('图形中心必须在画布范围 [0, 1] 内')
         if result['speed'] > .1:
             raise ValueError('真机绘图速度缩放上限为 10%')
-        result.update(shape=shape, size=float(size), center=list(center))
+        skip = data.get('skip_strokes', 0)
+        if (isinstance(skip, bool) or not isinstance(skip, int) or not 0 <= skip <= 255
+                or (skip and shape not in ('smile', 'docker', 'chair'))):
+            raise ValueError('仅素材续画可指定有效的已完成笔画数')
+        result.update(shape=shape, size=float(size), center=list(center), skip_strokes=skip)
     if kind in ('preset', 'record', 'return', 'delete'):
         name = data.get('name')
         if not isinstance(name, str) or not name.strip() or len(name) > 80:
