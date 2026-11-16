@@ -116,7 +116,7 @@ raw.onpointerdown=event=>{if(!state.camera?.fresh) return; raw.setPointerCapture
 raw.onpointermove=event=>{if(drag){drag.end=point(event);drawRaw();}};
 raw.onpointerup=event=>{if(!drag)return;drag.end=point(event);const candidate=normalize(drag.start,drag.end);if(candidate[2]*raw.width>=2 && candidate[3]*raw.height>=2)roi=candidate;drag=null;betaRevision++;updateRoi();drawRaw();};
 raw.onpointercancel=()=>{drag=null;drawRaw();};
-function updateRoi() {$('roi-label').textContent=roi ? `选区：${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : '选区：整张图';}
+function updateRoi() {updateEnhancementControls();$('roi-label').textContent=roi ? `选区：${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : '选区：整张图';}
 async function loadImage(url) {
   const response=await fetch(url,{signal:AbortSignal.timeout(4000)});if(!response.ok)throw new Error('图像不可用');
   const objectUrl=URL.createObjectURL(await response.blob());
@@ -129,7 +129,8 @@ async function refreshImages() {
   imageBusy=true;
   const revision=betaRevision, topic=state.camera.topic, sequence=state.camera.sequence;
   try {
-    const query=new URLSearchParams({beta:$('brightness').value,t:String(sequence)});
+    const ink=$('enhancement-mode').value==='ink';
+    const query=new URLSearchParams({beta:ink?'0':$('brightness').value,t:String(sequence),mode:ink&&roi?'ink':'brightness',strength:$('ink-strength').value,tolerance:$('ink-tolerance').value});
     if(roi)query.set('roi',roi.join(','));
     const [original,processed]=await Promise.all([loadImage('api/frame?t='+sequence),loadImage('api/frame?'+query)]);
     if(state.camera?.fresh && topic===state.camera.topic && revision===betaRevision) {
@@ -144,7 +145,7 @@ async function refreshImages() {
   finally{imageBusy=false;}
 }
 $('brightness').oninput=()=>{$('beta').textContent=$('brightness').value;betaRevision++;};
-$('neutral').onclick=()=>{$('brightness').value=0;$('beta').textContent='0';betaRevision++;};
+$('neutral').onclick=()=>{$('brightness').value=0;$('beta').textContent='0';for(const [id,value] of [['ink-strength',50],['ink-tolerance',20]]){$(id).value=value;$(id+'-value').textContent=value;}betaRevision++;};
 $('full-image').onclick=()=>{roi=null;betaRevision++;updateRoi();drawRaw();};
 for(const button of document.querySelectorAll('[data-axis]'))button.onclick=()=>command({kind:'jog',axis:button.dataset.axis,distance:Number($('step').value)*Number(button.dataset.sign),speed:Number($('speed').value)});
 $('switch-camera').onclick=()=>command({kind:'camera',topic:$('topic').value});
@@ -155,5 +156,15 @@ $('stop').onclick=async()=>{try{await post('api/stop',{});await poll();}catch(er
 $('record').onclick=()=>command({kind:'record',name:$('record-name').value,overwrite:$('overwrite').checked});
 $('return').onclick=()=>command({kind:'return',name:selected,speed:Number($('speed').value)});
 $('delete').onclick=()=>{if(confirm(`删除记录「${selected}」？`))command({kind:'delete',name:selected});};
+function updateEnhancementControls() {
+  const ink=$('enhancement-mode').value==='ink';
+  $('neutral').textContent=ink?'还原增强参数':'还原亮度';
+  $('ink-controls').hidden=!ink;
+  $('brightness-controls').hidden=ink;
+  $('enhancement-hint').textContent=ink ? (roi?'仅增强框选区域内已有的青蓝色细线；请确保选区避开蓝框。不会加粗或补线，也不表示压力大小。':'请在左侧框选黑色书写面，避开蓝色边框；选区前仅显示原图。') : '亮度调节有助于观察，不会补回原图缺失的细节。';
+}
+$('enhancement-mode').onchange=()=>{betaRevision++;updateEnhancementControls();};
+for(const id of ['ink-strength','ink-tolerance']) $(id).oninput=()=>{$(id+'-value').textContent=$(id).value;betaRevision++;};
+updateEnhancementControls();
 async function start(){try{const response=await fetch('api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('工作台连接失败，请刷新页面');}}
 start();

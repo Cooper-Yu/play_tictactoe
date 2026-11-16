@@ -151,3 +151,13 @@ The regular Stop button cancels the cycle; a canceled or failed cycle does not
 continue or automatically retreat. A separate user confirmation precedes the
 complete cycle. Motion completion is reported separately from actual screen
 clearing: automatic visual clear confirmation is not implemented.
+### Cyan/blue ink observation mode
+
+Select `青蓝色笔迹增强`, then manually crop a rectangular region inside the black
+writing surface, excluding the cyan frame. Until an ROI is selected, only the
+original preview is displayed. Strength (0–100) adjusts selective HSV brightness
+and saturation; color tolerance (5–45) widens hue selection around cyan/blue.
+Positive local brightness contrast suppresses uniformly blue-tinted background.
+No stroke dilation, line completion or image reconstruction is performed. The
+source image and saved original screenshots remain unchanged. This is a viewing
+aid, not a pressure measurement or a certified stroke-detection result.

@@ -36,7 +36,18 @@ def enhance_frame(frame, query):
         if x2 <= x1 or y2 <= y1:
             raise ValueError('ROI 小于一个像素')
         roi = (x1, y1, x2-x1, y2-y1)
-    enhanced = ImageEnhancer().enhance(image, beta, roi)
+    mode = query.get('mode', ['brightness'])[0]
+    if mode == 'ink':
+        try:
+            strength = float(query.get('strength', ['50'])[0])
+            tolerance = float(query.get('tolerance', ['20'])[0])
+        except ValueError:
+            raise ValueError('无效的笔迹增强参数')
+        enhanced = ImageEnhancer().enhance_ink(image, strength, tolerance, roi)
+    elif mode == 'brightness':
+        enhanced = ImageEnhancer().enhance(image, beta, roi)
+    else:
+        raise ValueError('未知图像增强模式')
     ok, encoded = cv2.imencode('.jpg', enhanced, [cv2.IMWRITE_JPEG_QUALITY, 92])
     if not ok:
         raise ValueError('图像增强失败')
