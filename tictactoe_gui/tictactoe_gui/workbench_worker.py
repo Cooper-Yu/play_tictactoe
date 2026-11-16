@@ -269,7 +269,7 @@ def workbench_worker(session):
             driver.node.invalidate_plan()
             session.update(plan=None, drawing_result=None, drawing_progress=None)
             driver.parameters(velocity_scaling=command['speed'], acceleration_scaling=command['speed'])
-            report = dict(input_strokes=command['strokes'], prepared=action.prepared,
+            report = dict(submitted_strokes=command['strokes'], prepared=action.prepared,
                           speed=command['speed'], environment='real', motion_completed=False)
             directory = session.output/'canvas'
             directory.mkdir(exist_ok=True)
