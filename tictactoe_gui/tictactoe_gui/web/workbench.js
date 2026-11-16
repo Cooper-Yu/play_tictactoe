@@ -59,7 +59,6 @@ function render() {
   if(appliedEnvironment !== state.environment && state.environment) {
     appliedEnvironment=state.environment;
     if(real) {
-      for(const option of [...$('step').options]) if(Number(option.value)>.002) option.remove();
       for(const option of [...$('speed').options]) if(Number(option.value)>.1) option.remove();
       $('speed').value='.05';
       if(!$('speed').value)$('speed').value='0.05';
