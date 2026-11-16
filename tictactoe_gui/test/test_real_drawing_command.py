@@ -33,4 +33,8 @@ def test_first_stop_cause_survives_later_cleanup_requests(tmp_path):
     assert first['source'] == 'feedback_guard' and first['job'] == 3
     session.stop.clear()
     session.request_stop()
+    assert session.status()['last_stop'] == first
+    session.stop.clear()
+    session.update(job=4)
+    session.request_stop()
     assert session.status()['last_stop']['source'] == 'caller'

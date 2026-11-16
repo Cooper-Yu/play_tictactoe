@@ -324,8 +324,10 @@ The API accepts `kind=draw`, `shape=x|o|grid`, metric `size`, `speed`, and optio
 normalized `center=[u,v]`. Geometry is validated before any drawing movement.
 `motion_completed` does not assert visible ink: `ink_confirmed` remains null.
 Simulation retains its previous canvas, renderer and reset semantics; this real
-workbench entry is rejected in simulation. A first physical 12 mm X/O run completed and both marks were visible. Full grid
-acceptance remains pending after interrupted runs; this is not an autonomous game.
+workbench entry is rejected in simulation. A first physical 12 mm X/O run completed and both marks were visible. A subsequent reset-first 60 mm grid completed all 17 motion stages and four visible
+lines. This is one physical verification, not an autonomous game or repeatability
+certification. A later hovering camera-clearance jog stopped on a 1.027 s feedback
+gap crossing the unchanged 1.0 s guard.
 
 
 Before the next real drawing test, run the complete Reset action and visually

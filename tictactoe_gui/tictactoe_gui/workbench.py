@@ -158,7 +158,7 @@ class WorkbenchSession:
         """! @brief Preserve the first stop cause until the stopped job is inspected."""
         event = None
         with self.lock:
-            if not self.stop.is_set():
+            if self.state.get('last_stop', {}).get('job') != self.state['job']:
                 event = dict(job=self.state['job'], reason=reason, source=source,
                              monotonic_s=time.monotonic())
                 self.state['last_stop'] = event
