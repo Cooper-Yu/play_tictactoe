@@ -20,3 +20,11 @@ vm.runInContext(code,context);
  await context.poll();assert.equal(context.state.fresh,true);
  console.log('Polling: overlapping requests coalesce, failure releases guard, recovery resumes');
 })().catch(e=>{console.error(e);process.exitCode=1});
+const handler=source.split('\n').find(line=>line.startsWith("$('reset-cycle').onclick="));
+assert.ok(handler,'Reset button must have a click handler');
+const button={};let submitted;
+const clickContext=vm.createContext({$:id=>id==='reset-cycle'?button:{value:'0.05'},
+  command:data=>{submitted=data}});
+vm.runInContext(handler,clickContext);button.onclick();
+assert.equal(submitted.kind,'reset');assert.equal(submitted.speed,.05);
+console.log('Reset button click submits reset command and selected speed');
