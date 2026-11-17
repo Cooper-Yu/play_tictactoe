@@ -1,5 +1,6 @@
 """Audit camera frames against projected labels and produce review contact sheets."""
 import argparse
+import base64
 from collections import Counter
 import hashlib
 import html
@@ -58,7 +59,11 @@ def audit(root,expected=100):
     for j,i in enumerate(selected):
         record=records[i];im=cv2.resize(cv2.imread(str(root/'previews'/(record['id']+'.jpg'))),(424,240));x=j%3*424;y=j//3*264;summary[y:y+240,x:x+424]=im;cv2.putText(summary,f"{i:04d} | {len(record['objects'])} objects",(x+10,y+257),cv2.FONT_HERSHEY_SIMPLEX,.5,(25,25,25),1)
     cv2.imwrite(str(review/'summary.jpg'),summary)
-    cards=''.join(f'<article><h3>{r["id"]} — {len(r["objects"])} objects</h3><a href="../images/{r["id"]}.png"><img src="../previews/{r["id"]}.jpg" loading="lazy"></a><p>{html.escape(", ".join(o["kind"]+":"+o["variant"] for o in r["objects"]) or "背景／干扰图：空标签")}</p><a href="../labels/{r["id"]}.txt">标签</a> · <a href="../annotations/{r["id"]}.json">元数据</a></article>' for r in records)
+    def embedded_preview(record):
+        image = root/'previews'/(record['id']+'.jpg')
+        return 'data:image/jpeg;base64,' + base64.b64encode(image.read_bytes()).decode('ascii')
+
+    cards=''.join(f'<article><h3>{r["id"]} — {len(r["objects"])} objects</h3><a href="../images/{r["id"]}.png"><img width="848" height="480" style="height:auto" src="{embedded_preview(r)}" loading="eager"></a><p>{html.escape(", ".join(o["kind"]+":"+o["variant"] for o in r["objects"])) or "背景／干扰图：空标签"}</p><a href="../labels/{r["id"]}.txt">标签</a> · <a href="../annotations/{r["id"]}.json">元数据</a></article>' for r in records)
     (review/'index.html').write_text('<!doctype html><meta charset="utf-8"><title>X/O 首批100张审核</title><style>body{font:16px sans-serif;margin:30px;background:#edf2f3;color:#20363a}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px}article{background:white;padding:16px;border-radius:12px}img{width:100%}p{line-height:1.6}a{color:#007b84}</style><h1>X/O 仿真相机首批审核</h1><p>80 张含目标，20 张背景。黄色框和类别仅在预览上；点击图像查看未画框的相机原图。尚未训练、尚未划分数据集。</p><main>'+cards+'</main>',encoding='utf-8')
     (root/'README.md').write_text('''# X/O 首批仿真相机审核数据
 
