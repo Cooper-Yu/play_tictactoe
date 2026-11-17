@@ -58,8 +58,13 @@ def symbol_paths(kind, variant, rng):
         if variant=='gap':
             gap=float(rng.choice([.06,.12,.20,.32]));return [a,b[t<.5-gap/2],b[t>.5+gap/2]]
         if variant=='unequal':b=b[10:-10]
+        if variant=='offset':b[:,1]+=.28
+        if variant=='jitter':
+            a[:,1]+=.035*np.sin(12*np.pi*t);b[:,1]+=.035*np.sin(12*np.pi*t)
         return [a,b,b+np.array([.035,0])] if variant=='retrace' else [a,b]
-    rx=float(rng.uniform(.65,1.0)) if variant=='ellipse' else 1.
+    if variant=='multi_gap':
+        gap=float(rng.choice([.08,.20]));return [np.c_[np.cos(t),np.sin(t)] for t in [np.linspace(gap,np.pi-gap,81),np.linspace(np.pi+gap,2*np.pi-gap,81)]]
+    rx=float(rng.uniform(.55,1.0)) if variant=='ellipse' else 1.
     gap=math.radians(float(rng.choice([20,40,60,90]))) if variant=='gap' else 0
     t=np.linspace(gap/2,2*np.pi-gap/2,145)
     rad=1+.055*np.sin(5*t+.3) if variant=='handdrawn' else np.ones_like(t)
@@ -115,14 +120,18 @@ def create_world(out,source):
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--count',type=int,default=100);args=p.parse_args()
-    assert 1<=args.count<=100
+    p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--count',type=int,default=100);p.add_argument('--seed',type=int,default=20261117);p.add_argument('--start-index',type=int,default=0);p.add_argument('--views-per-scene',type=int,default=1);p.add_argument('--expanded',action='store_true');args=p.parse_args()
+    assert 1<=args.count<=1000
+    assert args.views_per_scene in (1,5) and args.count%args.views_per_scene==0
+    assert args.start_index>=0
     assert os.environ.get('ROS_DOMAIN_ID')=='191' and os.environ.get('ROS_LOCALHOST_ONLY')=='1'
     assert os.environ.get('GAZEBO_MASTER_URI')=='http://127.0.0.1:11619', 'Use isolated capture master'
     out=args.output.resolve();out.mkdir(parents=True,exist_ok=False)
     for sub in ['images','labels','annotations','previews','meshes']: (out/sub).mkdir()
     share=Path('/home/cooper/final_project_1063805/install/piper_gazebo/share/piper_gazebo')
     create_world(out/'capture.world',share/'worlds/tictactoe.world')
+    if args.expanded:
+        tree=ET.parse(out/'capture.world');camera=tree.getroot().find(".//sensor/camera");noise=ET.SubElement(camera,'noise');ET.SubElement(noise,'type').text='gaussian';ET.SubElement(noise,'mean').text='0';ET.SubElement(noise,'stddev').text='0.002';tree.write(out/'capture.world',encoding='unicode')
     from simulation_session import simulator_processes,terminate_owned
     assert not simulator_processes(),'Existing simulator: refuse duplicate'
     tag='xo-review-'+str(os.getpid());env=dict(os.environ,PLAY_TICTACTOE_SESSION=tag)
@@ -133,40 +142,48 @@ def main():
         for client in [node.spawn,node.delete,node.set_state]:
             if not client.wait_for_service(timeout_sec=45):raise RuntimeError('Service unavailable: '+client.srv_name)
         node.settle_image(1)
-        rng=np.random.default_rng(20261117);model=None
-        for i in range(args.count):
+        rng=np.random.default_rng(args.seed);model=None
+        for sample_index in range(args.count):
+            i=sample_index+args.start_index
+            scene_index=sample_index//args.views_per_scene;view_index=sample_index%args.views_per_scene
+            if args.expanded:
+                rng=np.random.default_rng(args.seed+scene_index)
+            pose_rng=np.random.default_rng(args.seed+1000000+sample_index) if args.expanded else rng
+            appearance_rng=np.random.default_rng(args.seed+2000000+sample_index) if args.expanded else rng
             if model:node.wait(node.delete.call_async(DeleteEntity.Request(name=model)))
-            pose=[.198395+float(rng.uniform(-.003,.003)),.199552+float(rng.uniform(-.004,.004)),.203527+float(rng.uniform(-.003,.003)),0.,.785379+float(rng.uniform(-.025,.025)),-1.57+float(rng.uniform(-.025,.025))]
+            pose=[.198395+float(pose_rng.uniform(-.004,.004)),.199552+float(pose_rng.uniform(-.005,.005)),.203527+float(pose_rng.uniform(-.004,.004)),float(pose_rng.uniform(-.015,.015)) if args.expanded else 0.,.785379+float(pose_rng.uniform(-.035,.035)),-1.57+float(pose_rng.uniform(-.035,.035))]
             req=SetEntityState.Request();req.state.name='camera_model';req.state.reference_frame='world';req.state.pose.position.x,req.state.pose.position.y,req.state.pose.position.z=pose[:3]
             q=quaternion(*pose[3:]);req.state.pose.orientation.x,req.state.pose.orientation.y,req.state.pose.orientation.z,req.state.pose.orientation.w=q
             node.wait(node.set_state.call_async(req))
-            visuals=[];objects=[];groupid=f'scene_{i:03d}';negative=i%5==4
+            visuals=[];objects=[];groupid=f'extra_scene_{scene_index:04d}' if args.expanded else f'scene_{i:03d}';negative=(scene_index if args.expanded else i)%5==4;layout_index=scene_index if args.expanded else i
             def mesh(paths,width,color,object_id):
                 vertices=[]
                 for k,points in enumerate(paths):
-                    f=out/'meshes'/f'{groupid}_{object_id}_{k}.dae';write_ribbon(f,points,.0275,width,True);apply_mesh_color(f,color)
+                    f=out/'meshes'/f'{groupid}_view{view_index}_{object_id}_{k}.dae';write_ribbon(f,points,.0275,width,True);apply_mesh_color(f,color)
                     root=ET.parse(f).getroot();ns={'c':'http://www.collada.org/2005/11/COLLADASchema'}
                     vertices.extend(np.fromstring(root.find('.//c:float_array',ns).text,sep=' ').reshape(-1,3).tolist())
                     c=' '.join(map(str,[*color,1]))
                     visuals.append(f'<visual name="v{len(visuals)}"><cast_shadows>false</cast_shadows><geometry><mesh><uri>{f.as_uri()}</uri></mesh></geometry><material><lighting>true</lighting><ambient>0 0 0 1</ambient><diffuse>0 0 0 1</diffuse><emissive>{c}</emissive></material></visual>')
                 return np.asarray(vertices)
-            grid=bool(i%3!=0)
+            grid=bool(layout_index%3!=0)
             if grid:
                 paths=[np.array([[x,-.079],[x,.097]]) for x in [.176,.224]]+[np.array([[.136,y],[.264,y]]) for y in [-.023,.041]]
                 mesh(paths,.0007,[.16,.35,.36],'grid')
             cells=rng.choice(9,size=int(rng.integers(1,10)) if not negative else int(rng.integers(1,5)),replace=False)
             for j,cell in enumerate(cells):
                 col,row=int(cell%3),int(cell//3);center=np.array([.152+col*.048,-.055+row*.064])+rng.uniform(-.003,.003,2)
-                scale=float(rng.uniform(.010,.016));angle=float(rng.uniform(-.32,.32));rot=np.array([[math.cos(angle),-math.sin(angle)],[math.sin(angle),math.cos(angle)]])
+                scale=float(rng.uniform(.009,.0165) if args.expanded else rng.uniform(.010,.016));angle=float(rng.uniform(-.32,.32));rot=np.array([[math.cos(angle),-math.sin(angle)],[math.sin(angle),math.cos(angle)]])
                 if negative:
-                    variant=['blank','triangle','square','V','slash'][i//5%5]
+                    variant=['blank','triangle','square','V','slash'][layout_index//5%5]
                     if variant=='blank':continue
                     base={'triangle':[[-1,-1],[1,-1],[0,1],[-1,-1]],'square':[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]],'V':[[-1,1],[0,-1],[1,1]],'slash':[[-1,-1],[1,1]]}[variant];paths=[np.array(base)]
                     kind=None
                 else:
-                    kind='X' if (i+j)%2==0 else 'O';variants=['straight','curved','gap','unequal','retrace'] if kind=='X' else ['circle','ellipse','gap','handdrawn','retrace'];variant=variants[(i+j//2)%5];paths=symbol_paths(kind,variant,rng)
+                    kind='X' if (layout_index+j)%2==0 else 'O';variants=['straight','curved','gap','unequal','retrace'] if kind=='X' else ['circle','ellipse','gap','handdrawn','retrace']
+                    if args.expanded:variants+=['offset','jitter'] if kind=='X' else ['multi_gap']
+                    variant=variants[(layout_index+j//2)%len(variants)];paths=symbol_paths(kind,variant,rng)
                 paths=[points@rot.T*scale+center for points in paths]
-                color=[float(rng.uniform(.35,.65)),float(rng.uniform(.7,1)),float(rng.uniform(.7,1))];width=float(rng.uniform(.00065,.0014));v=mesh(paths,width,color,str(j))
+                color=[float(appearance_rng.uniform(.35,.65)),float(appearance_rng.uniform(.7,1)),float(appearance_rng.uniform(.7,1))];width=float(appearance_rng.uniform(.00065,.0014));v=mesh(paths,width,color,str(j))
                 if kind:objects.append(dict(class_id=0 if kind=='X' else 1,kind=kind,variant=variant,boundary=variant=='gap',paths_board_xy=[a.tolist() for a in paths],center_xy=center.tolist(),scale_m=scale,rotation_rad=angle,color_rgb=color,vertices=v.tolist(),width_m=width))
             model=f'xo_capture_{i:03d}';sdf=f'<sdf version="1.6"><model name="{model}"><static>true</static><link name="ink">'+''.join(visuals)+'</link></model></sdf>'
             if not visuals:sdf=f'<sdf version="1.6"><model name="{model}"><static>true</static><link name="ink"/></model></sdf>'
@@ -183,10 +200,10 @@ def main():
                 cv2.rectangle(preview,(x0,y0),(x1,y1),(0,220,255),1);cv2.putText(preview,obj['kind'],(x0,max(10,y0-3)),cv2.FONT_HERSHEY_SIMPLEX,.4,(0,220,255),1)
             stem=f'xo_sim_{i:04d}';cv2.imwrite(str(out/'images'/f'{stem}.png'),image);cv2.imwrite(str(out/'previews'/f'{stem}.jpg'),preview)
             (out/'labels'/f'{stem}.txt').write_text('\n'.join(labels)+('\n' if labels else ''))
-            rec=dict(id=stem,scene_group=groupid,split='review_unsplit',source='Gazebo Classic camera rendering; direct board ribbons; no robot motion',negative=negative,grid=grid,seed=20261117,camera_pose_world=pose,camera_info=dict(width=node.info.width,height=node.info.height,k=list(node.info.k),d=list(node.info.d)),image_header=dict(frame_id=msg.header.frame_id,sec=msg.header.stamp.sec,nanosec=msg.header.stamp.nanosec),objects=objects,sha256=hashlib.sha256((out/'images'/f'{stem}.png').read_bytes()).hexdigest())
+            rec=dict(id=stem,scene_group=groupid,split='review_unsplit',source='Gazebo Classic camera rendering; direct board ribbons; no robot motion',negative=negative,grid=grid,seed=args.seed+(scene_index if args.expanded else 0),view_index=view_index,camera_noise_stddev=.002 if args.expanded else 0.,camera_pose_world=pose,camera_info=dict(width=node.info.width,height=node.info.height,k=list(node.info.k),d=list(node.info.d)),image_header=dict(frame_id=msg.header.frame_id,sec=msg.header.stamp.sec,nanosec=msg.header.stamp.nanosec),objects=objects,sha256=hashlib.sha256((out/'images'/f'{stem}.png').read_bytes()).hexdigest())
             (out/'annotations'/f'{stem}.json').write_text(json.dumps(rec,indent=2));records.append(rec)
             (out/'manifest.json').write_text(json.dumps(dict(status='capturing',rules='confirmed-v1-20261117',records=records),indent=2))
-            print(f'CAPTURE {i+1}/{args.count} objects={len(objects)}',flush=True)
+            print(f'CAPTURE {sample_index+1}/{args.count} id={stem} group={groupid} objects={len(objects)}',flush=True)
         (out/'data.yaml').write_text(f'path: {out}\n# Review pool: split by scene before assigning train/val/test.\nnames:\n  0: X\n  1: O\n')
         manifest=dict(status='captured_awaiting_visual_audit',rules='confirmed-v1-20261117',count=len(records),negative=sum(r['negative'] for r in records),class_counts={c:sum(o['kind']==c for r in records for o in r['objects']) for c in ['X','O']},records=records,limitations=['no robot/hand occlusion in this first batch','synthetic illuminated pen ribbons are not physical contact simulation','camera resolution 848x480; course board/world reused; viewpoint perturbed','not yet an independently split training/validation/test dataset','real-image transfer unverified'])
         (out/'manifest.json').write_text(json.dumps(manifest,indent=2))

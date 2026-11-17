@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 
-def audit(root,expected=100):
+def audit(root,expected=100,build_review=True):
     manifest=json.loads((root/'manifest.json').read_text());records=manifest['records']
     assert len(records)==expected
     assert len({r['sha256'] for r in records})==expected,'Duplicate frames'
@@ -47,6 +47,8 @@ def audit(root,expected=100):
     cleanup=json.loads((root/'cleanup.json').read_text());assert cleanup['remaining_owned_pids']==[]
     report=dict(status='automated_audit_passed_human_review_pending',frames=expected,positive=sum(not r['negative'] for r in records),negative=sum(r['negative'] for r in records),class_counts=dict(counts),variants={k[0]+':'+k[1]:v for k,v in variants.items()},min_visible_ink_pixels_per_object=worst,unique_hashes=expected,checks=['matching image/label/metadata counts','valid YOLO normalized boxes','boxes match projected mesh geometry','visible target-color pixels inside every box','visible ink reaches each box edge within 6px','no duplicate images','no train/val/test split leakage introduced: pilot unsplit','owned simulator cleaned'],limitations=manifest['limitations'])
     (root/'audit.json').write_text(json.dumps(report,indent=2))
+    if not build_review:
+        print(json.dumps(report,ensure_ascii=False));return report
     review=root/'review';review.mkdir(exist_ok=True)
     for batch in range((expected+24)//25):
         sheet=np.full((5*264,5*424,3),245,np.uint8)
@@ -82,4 +84,4 @@ def audit(root,expected=100):
     print(json.dumps(report,ensure_ascii=False))
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('root',type=Path);p.add_argument('--expected',type=int,default=100);args=p.parse_args();audit(args.root,args.expected)
+    p=argparse.ArgumentParser();p.add_argument('root',type=Path);p.add_argument('--expected',type=int,default=100);p.add_argument('--no-review',action='store_true');args=p.parse_args();audit(args.root,args.expected,not args.no_review)
