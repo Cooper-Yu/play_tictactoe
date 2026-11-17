@@ -231,7 +231,7 @@ occupied-cell rejection, win/draw detection and cell placement derived from the
 selected grid center/width/height. A mark is committed only after verified drawing.
 Failure blocks the game because a partial physical/virtual mark may exist; clear
 with the existing Reset mechanism before constructing and starting a new game.
-This does not yet implement YOLO human-move observation or an AI opponent.
+Optional CPU opponent suggestions use the confirmed game state. YOLO turn observation is a separate input to the game coordinator.
 
 `test/verify_tictactoe_game.py` executes a 60x60 mm grid and five explicit moves
 until X wins, captures the displayed board, triggers virtual Reset and returns
@@ -250,8 +250,8 @@ X edge=0.55*cell_size, O radius=0.25*cell_size.
 
 `GridGame` provides shared explicit-turn state. `TicTacToe` preserves three-in-a-row;
 `Gomoku` defaults to9x9 cells and five-in-a-row. This airborne X/O variant uses
-cell centers, permits overlines (five or more), and has no renju forbidden moves
-or automatic opponent. Winning runs cannot cross row boundaries or gaps. Failed
+cell centers, permits overlines (five or more), and has no renju forbidden moves.
+Winning runs cannot cross row boundaries or gaps. Failed
 execution blocks further turns without committing a phantom mark.
 
 `test/verify_gomoku_game.py` draws a90x90mm9x9 grid (10mm cells,5.5mm X edges,
@@ -262,6 +262,25 @@ board_demo_sim ROS parameter files and a temporary output/poses file. The larger
 remains0.5rad and the production per-sample jump, FK path, joint-limit, collision
 and execution checks remain in force. This is one demonstrated configuration,
 not runtime certification of all sizes or all board cells.
+
+### CPU decision engines
+
+Call `choose_move(board, player)` with a confirmed 3x3 or 9x9 matrix containing
+empty strings, X, and O. X moves first. The return value is a zero-based
+`(row, col)`, or `None` for a finished game. `game.suggest_move()` reads an
+existing game's confirmed state and turn. The caller can then use `game.play()`.
+
+The 3x3 engine uses Python Minimax. The 9x9 freestyle engine uses the
+[Rapfi release](https://github.com/dotb1ue/rapfi/releases) as a separate Linux
+process over standard input and output. Extract the release's configuration
+and evaluation weights beside the Linux executable, then set
+`TICTACTOE_RAPFI` to its absolute path. Choose a build supported by the CPU.
+The adapter requests 500 ms per move by default and validates the returned
+cell before handing it to the caller. A missing engine or protocol error fails
+the suggestion without recording a move.
+
+Pass `--decision` to either Gazebo game verification script to draw the final
+move selected by its engine. The earlier scripted moves set up a winning position.
 
 ### Scalable illustration materials
 

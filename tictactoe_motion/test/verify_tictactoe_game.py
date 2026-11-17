@@ -21,6 +21,7 @@ from tictactoe_motion.simulated_board import SimulatedBoard
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',required=True)
+    p.add_argument('--decision', action='store_true', help='Let the engine choose the final move')
     args=p.parse_args(remove_ros_args(sys.argv)[1:]);profile=yaml.safe_load((Path(__file__).parents[1]/'config/board_sim.yaml').read_text())
     h=SimulationHarness(args.output);renderer=None;report={'simulation_only':True,'scenario':'parameterized grid -> five legal moves -> X wins -> virtual Reset -> zero'}
     generation=h.execution.stop.generation
@@ -46,9 +47,14 @@ def main():
         report['grid']=g.start(**options);screenshot('grid')
         report['moves']=[]
         for symbol,row,col in [('X',0,0),('O',1,0),('X',0,1),('O',1,1),('X',0,2)]:
+            if args.decision and symbol == 'X' and g.board.count('X') == g.win_length - 1:
+                row, col = g.suggest_move()
+                report['decision_move'] = [row, col]
             print(f'MOVE {symbol} {row} {col}',flush=True)
             result=g.play(symbol,row,col,**options);report['moves'].append({'symbol':symbol,'row':row,'column':col,'result':result})
         assert g.outcome=='X' and g.phase=='finished'
+        if args.decision:
+            assert 'decision_move' in report
         report.update(board=g.board,outcome=g.outcome,painted=painted)
         models=h.result(listing.call_async(GetModelList.Request())).model_names
         assert len(renderer.models)==12 and set(renderer.models).issubset(models)

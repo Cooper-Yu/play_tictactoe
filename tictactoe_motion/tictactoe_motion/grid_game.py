@@ -1,12 +1,14 @@
 """A small turn-based game state committed only after verified robot drawing."""
 
+from tictactoe_motion.decision import choose_move
+
 
 
 class GridGame:
     """! @brief Keep grid geometry and legal turns; require Reset after partial failures.
 
-    This layer uses explicit row/column inputs, not visual recognition or an AI
-    opponent. Board state changes only after successful action completion.
+    This layer uses explicit row/column inputs and offers optional AI suggestions.
+    Board state changes only after successful action completion.
     """
     def __init__(self,actions,center=(.5,.5),width=.06,height=.06,rows=3,columns=3,win_length=3):
         self.actions=actions;self.center=tuple(center);self.width=width;self.height=height
@@ -61,6 +63,18 @@ class GridGame:
         self.phase='finished' if self.outcome else 'playing'
         self.turn='O' if symbol=='X' else 'X'
         return result
+
+    def suggest_move(self, **engine_options):
+        """! @brief Suggest a move for the current turn without changing the board."""
+        if self.phase == "finished":
+            return None
+        if self.phase != "playing":
+            raise ValueError("Game is not accepting moves")
+        if (self.rows, self.columns, self.win_length) not in ((3, 3, 3), (9, 9, 5)):
+            raise ValueError("AI suggestions support 3x3 three-in-a-row or 9x9 five-in-a-row")
+        board = [self.board[index:index + self.columns]
+                 for index in range(0, len(self.board), self.columns)]
+        return choose_move(board, self.turn, **engine_options)
 
     def has_line(self,symbol,row,col):
         """! @brief Count uninterrupted runs in four axes through the latest move."""
