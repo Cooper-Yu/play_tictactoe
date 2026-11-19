@@ -7,20 +7,66 @@ from tictactoe_motion.stroke_drawing import StrokeDrawing
 
 class CanvasDrawing(StrokeDrawing):
     """! @brief Validate all canvas strokes before approaching their first start."""
-    def __init__(self, canvas, strokes, upper_z=.22, depth=.01, snap=True):
+    def __init__(self, canvas, strokes, upper_z=.22, depth=.01, snap=True, *,
+                 transfer_z=None, exit_to_transfer=False, fallback=None):
         super().__init__('cross',depth=depth)
         self.canvas = canvas
+        profile_hover = canvas.profile.get('canvas_hover_link6_z_m' if transfer_z is not None
+                                         else 'hover_link6_z_m', upper_z)
         if canvas.environment == 'real' and (
-                abs(upper_z-canvas.profile['hover_link6_z_m']) > 1e-9
+                abs(upper_z-profile_hover) > 1e-9
                 or abs(upper_z-depth-canvas.z) > 1e-9):
             raise ValueError('Real drawing heights must match the calibrated board profile')
         if not 1<=len(strokes)<=32:raise ValueError('Require 1..32 separate strokes')
         self.paths=[canvas.stroke(points,snap=snap) for points in strokes]
+        self.fallback = {i: [canvas.stroke(points, snap=snap) for points in parts]
+                         for i, parts in (fallback or {}).items()}
         self.upper_z=upper_z
+        self.transfer_z = transfer_z
+        self.exit_to_transfer = exit_to_transfer
+        if transfer_z is not None and (
+                canvas.environment != 'real' or not math.isfinite(transfer_z)
+                or not .001 <= transfer_z - upper_z <= .02):
+            raise ValueError('Invalid elevated canvas transfer height')
         if not .20<=upper_z-depth<upper_z<=.30:
             raise ValueError('Simulation hover height outside validated range')
 
     def run(self, driver, cancelled=lambda:False, on_stage=lambda name:None):
+        if self.transfer_z is None:
+            return self._run(driver, cancelled, on_stage)
+        planner = driver.node.cartesian_planner
+        requested = {key: driver.node.get_parameter(key).value
+                     for key in ('velocity_scaling', 'acceleration_scaling')}
+        slow = dict.fromkeys(requested, .1)
+
+        def configure(native):
+            driver.parameters(**(requested if native else slow))
+            planner.canvas_native_timing = native
+
+        def progress(name):
+            configure(name == 'approach' or name[0].isdigit())
+            on_stage(name)
+
+        try:
+            stages = self._run(driver, cancelled, progress)
+            if self.exit_to_transfer:
+                if cancelled():
+                    raise RuntimeError('Drawing cancelled before exit lift')
+                configure(False)
+                on_stage('exit_lift')
+                lift = copy.deepcopy(driver.current_pose().position)
+                lift.z = self.transfer_z
+                result = driver.linear(lift)
+                if not isinstance(result, dict) or not result.get('passed'):
+                    raise RuntimeError('Canvas exit lift failed')
+                self.results.append(dict(stage='exit_lift', result=copy.deepcopy(result)))
+                return copy.deepcopy(self.results)
+            return stages
+        finally:
+            planner.canvas_native_timing = False
+            driver.parameters(**requested)
+
+    def _run(self, driver, cancelled, on_stage):
         self.results=[]
         if cancelled():raise RuntimeError('Drawing cancelled')
         upper=driver.current_pose()
@@ -36,14 +82,18 @@ class CanvasDrawing(StrokeDrawing):
             error = 2*math.acos(min(1., abs(sum(a*b for a,b in zip(actual,expected))/norm)))
             if error > self.canvas.profile['orientation_tolerance_rad']:
                 raise ValueError('Move to clear drawing orientation before drawing')
-            if upper.position.z < self.upper_z-0.0001:
+            clearance = self.transfer_z or self.upper_z
+            if upper.position.z < clearance-0.0001:
                 on_stage('raise_before_transfer')
-                lift = copy.deepcopy(upper.position); lift.z = self.upper_z
+                lift = copy.deepcopy(upper.position); lift.z = clearance
                 result = driver.linear(lift)
                 if not isinstance(result, dict) or result.get('passed') is not True:
                     raise RuntimeError('Canvas initial lift failed')
                 self.results.append({'stage':'raise_before_transfer','result':copy.deepcopy(result)})
                 if cancelled():raise RuntimeError('Drawing cancelled')
+                upper = driver.current_pose()
+                if self.transfer_z is not None and upper.position.z < clearance-.0001:
+                    raise RuntimeError('Canvas transfer clearance not reached')
         upper.position.x,upper.position.y,_=self.paths[0][0]
         transfer_z = max(upper.position.z, self.upper_z) if self.canvas.environment == 'real' else self.upper_z
         upper.position.z=transfer_z
@@ -68,11 +118,15 @@ class CanvasDrawing(StrokeDrawing):
                 raise RuntimeError('Canvas hover approach failed')
             self.results.append({'stage':'approach_hover','result':copy.deepcopy(result)})
         upper.position.z = self.upper_z
-        strokes=[]
-        for path in self.paths:
-            poses=[]
-            for x,y,_ in path:
-                pose=Pose();pose.position.x=x;pose.position.y=y;pose.position.z=self.upper_z-self.depth
-                pose.orientation=copy.deepcopy(upper.orientation);poses.append(pose)
-            strokes.append(poses)
-        return self.run_strokes(driver,strokes,upper,cancelled,on_stage)
+        def poses(path):
+            result = []
+            for x, y, _ in path:
+                pose = Pose()
+                pose.position.x, pose.position.y, pose.position.z = x, y, self.upper_z-self.depth
+                pose.orientation = copy.deepcopy(upper.orientation)
+                result.append(pose)
+            return result
+
+        strokes = [poses(path) for path in self.paths]
+        fallback = {i: [poses(path) for path in parts] for i, parts in self.fallback.items()}
+        return self.run_strokes(driver, strokes, upper, cancelled, on_stage, fallback)

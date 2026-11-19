@@ -209,7 +209,7 @@ def workbench_worker(session):
             from tictactoe_motion.reset_action import ResetAction
             driver.node.invalidate_plan()
             session.update(plan=None, reset_result=None)
-            result = ResetAction(driver, lambda stage: session.update(message=stage)).run(command['speed'])
+            result = ResetAction(driver, lambda stage: session.update(message=stage)).run(command['speed'], direct_native=session.environment == 'real')
             session.update(reset_result=result)
         elif kind == 'draw':
             from pathlib import Path

@@ -11,7 +11,9 @@ safe_corners:
 grid_spacing_m: 0.0005
 drawing_link6_z_m: 0.206
 hover_link6_z_m: 0.216
+canvas_hover_link6_z_m: 0.211
+transfer_link6_z_m: 0.216
 # link6 reference; not a calibrated physical pen TCP.
 required_orientation_xyzw: [0.0, 1.0, 0.0, 0.0]
 orientation_tolerance_rad: 0.03
-max_velocity_scaling: 0.1
+max_velocity_scaling: 1.0

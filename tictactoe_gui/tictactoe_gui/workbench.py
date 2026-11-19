@@ -72,9 +72,11 @@ def validate_command(data, environment='sim'):
             raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
         result.update(axis=axis, distance=float(distance))
     if kind in ('jog', 'preset', 'return', 'reset', 'draw', 'canvas'):
-        speed = data.get('speed', .1)
+        default_speed = 1.0 if kind == 'canvas' and environment == 'real' else .1
+        speed = data.get('speed', default_speed)
+        max_speed = .1 if kind == 'reset' else (1.0 if environment == 'real' else .3)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))
-                or not math.isfinite(speed) or not .01 <= speed <= (.1 if environment == 'real' else .3)):
+                or not math.isfinite(speed) or not .01 <= speed <= max_speed):
             raise ValueError('速度缩放超出当前环境范围')
         result['speed'] = float(speed)
     if kind == 'canvas':
@@ -97,8 +99,6 @@ def validate_command(data, environment='sim'):
                 or any(isinstance(v, bool) or not isinstance(v, (int, float))
                        or not math.isfinite(v) or not 0 <= v <= 1 for v in center)):
             raise ValueError('图形中心必须在画布范围 [0, 1] 内')
-        if result['speed'] > .1:
-            raise ValueError('真机绘图速度缩放上限为 10%')
         skip = data.get('skip_strokes', 0)
         if (isinstance(skip, bool) or not isinstance(skip, int) or not 0 <= skip <= 255
                 or (skip and shape not in ('smile', 'docker', 'chair'))):

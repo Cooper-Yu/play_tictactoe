@@ -42,7 +42,7 @@ def test_real_commands_retain_small_step_and_speed_limits(tmp_path):
     session = WorkbenchSession(tmp_path, environment='real')
     assert session.status()['environment'] == 'real'
     assert validate_command(dict(kind='jog', axis='x', distance=.05, speed=.1), 'real')['distance'] == .05
-    for command in [dict(kind='jog', axis='z', distance=.05), dict(kind='jog', axis='x', distance=.051), dict(kind='preset', name='clear', speed=.2)]:
+    for command in [dict(kind='jog', axis='z', distance=.05), dict(kind='jog', axis='x', distance=.051), dict(kind='preset', name='clear', speed=1.01)]:
         with pytest.raises(ValueError):
             validate_command(command, 'real')
 
@@ -97,7 +97,7 @@ def test_real_illustrations_keep_existing_motion_boundary(shape):
     assert validate_command(command, 'real')['shape'] == shape
     with pytest.raises(ValueError): validate_command(command, 'sim')
     with pytest.raises(ValueError): validate_command(dict(command, size=.061), 'real')
-    with pytest.raises(ValueError): validate_command(dict(command, speed=.11), 'real')
+    with pytest.raises(ValueError): validate_command(dict(command, speed=1.01), 'real')
     with pytest.raises(ValueError): validate_command(dict(command, shape='../chair'), 'real')
 
 

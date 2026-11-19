@@ -22,6 +22,10 @@ from tictactoe_motion.motion_planner import MotionPlanner
 from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
 
 
+class JointExcursionError(ValueError):
+    """A planned trajectory exceeds the allowed joint excursion."""
+
+
 class SimulationDriver:
     """! @brief Exercise the public demo services, refusing hardware or shared ROS graphs."""
 
@@ -150,15 +154,21 @@ class SimulationDriver:
         self.guard(2.0)
         return self.verified_pose_result(self.execute())
 
-    def linear(self, target_position):
+    def linear(self, target_position, *, speed=None, allow_excursion_retry=False):
         self.check_motion_guard()
-        assert self.node.cartesian_planner.request_linear_position(target_position)
+        assert self.node.cartesian_planner.request_linear_position(target_position, speed=speed)
         self.until(lambda: not self.node.is_planning)
-        self.guard()
+        try:
+            self.guard()
+        except JointExcursionError:
+            if not allow_excursion_retry:
+                raise
+            self.node.invalidate_plan()
+            return None
         return self.verified_pose_result(self.execute())
 
 
-    def path(self, poses, excursion_limit=0.5):
+    def path(self, poses, excursion_limit=0.5, *, speed=None, allow_plan_retry=False):
         """Execute an XY stroke at the achieved drawing height and orientation."""
         self.check_motion_guard()
         start = self.current_pose()
@@ -167,9 +177,22 @@ class SimulationDriver:
             target = copy.deepcopy(start)
             target.position.x, target.position.y = pose.position.x, pose.position.y
             path.append(target)
-        assert self.node.cartesian_planner.request_path(path)
+        assert self.node.cartesian_planner.request_path(path, speed=speed)
         self.until(lambda: not self.node.is_planning)
-        self.guard(excursion_limit)
+        self.check_motion_guard()
+        if allow_plan_retry and self.node.planned_trajectory is None:
+            report = self.node.cartesian_planner.last_report or {}
+            reason = report.get('reason', '')
+            if reason.startswith(('Incomplete Cartesian path:', 'FK path deviation:',
+                                  'Cartesian joint jump exceeds limit')):
+                return None
+        try:
+            self.guard(excursion_limit)
+        except JointExcursionError:
+            if not allow_plan_retry:
+                raise
+            self.node.invalidate_plan()
+            return None
         return self.verified_pose_result(self.execute())
 
     def guard(self, limit=0.5):
@@ -180,7 +203,8 @@ class SimulationDriver:
         assert joints.points
         maximum = max(abs(value - joints.points[0].positions[i])
                       for point in joints.points for i, value in enumerate(point.positions))
-        assert maximum < limit, ('excessive joint excursion', maximum)
+        if not math.isfinite(maximum) or maximum >= limit:
+            raise JointExcursionError(f'Joint excursion {maximum:.6f} rad exceeds the limit {limit:.6f} rad')
         previous = -1.0
         for point in joints.points:
             assert len(point.positions) == len(joints.joint_names)

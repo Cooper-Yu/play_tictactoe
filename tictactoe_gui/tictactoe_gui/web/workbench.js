@@ -28,7 +28,7 @@ function renderControls() {
   for (const button of document.querySelectorAll('[data-axis], #plan-preset, #record')) button.disabled = blocked || (button.dataset.axis==='z' && Number($('step').value)>.02);
   $('real-drawing').hidden = state.environment !== 'real';
   $('drawing-hint').hidden = state.environment !== 'real';
-  $('draw').disabled = blocked || state.environment !== 'real' || Number($('speed').value)>.1;
+  $('draw').disabled = blocked || state.environment !== 'real';
   $('reset-cycle').disabled = blocked || !state.records?.['reset悬空预备'] || !state.records?.Reset;
   $('execute').disabled = blocked || !state.plan;
   $('return').disabled = blocked || !state.records?.[selected];
@@ -65,9 +65,11 @@ function render() {
     appliedEnvironment=state.environment;
     if(real) {
       if(![...$('step').options].some(o=>o.value==='0.05')) $('step').add(new Option('50 mm (XY)','0.05'));
-      for(const option of [...$('speed').options]) if(Number(option.value)>.1) option.remove();
-      $('speed').value='.1';
-      if(!$('speed').value)$('speed').value='0.1';
+      const speed = $('speed');
+      speed.replaceChildren(...Array.from({length:20}, (_, index) => {
+        const percent = (index + 1) * 5;
+        return new Option(percent+'%', String(percent/100), percent===10, percent===10);
+      }));
     }
   }
   $('environment-label').textContent='ROS 2 / MoveIt 2 · '+(real?'真机模式':'仿真模式');
@@ -154,7 +156,7 @@ for(const button of document.querySelectorAll('[data-axis]'))button.onclick=()=>
 $('switch-camera').onclick=()=>command({kind:'camera',topic:$('topic').value});
 $('plan-preset').onclick=()=>command({kind:'preset',name:$('preset').value,speed:Number($('speed').value)});
 $('execute').onclick=()=>command({kind:'execute'});
-$('reset-cycle').onclick=()=>command({kind:'reset',speed:Number($('speed').value)});
+$('reset-cycle').onclick=()=>command({kind:'reset',speed:Math.min(Number($('speed').value), .1)});
 $('draw').onclick=()=>command({kind:'draw',shape:$('draw-shape').value,size:Number($('draw-size').value)/1000,speed:Number($('speed').value)});
 $('stop').onclick=async()=>{try{await post('api/stop',{});await poll();}catch(error){toast(error.message);}};
 $('record').onclick=()=>command({kind:'record',name:$('record-name').value,overwrite:$('overwrite').checked});

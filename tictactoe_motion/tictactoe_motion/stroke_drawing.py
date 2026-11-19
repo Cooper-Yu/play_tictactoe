@@ -42,7 +42,7 @@ class StrokeDrawing:
 
         return self.run_strokes(driver, self.strokes, upper, cancelled, on_stage)
 
-    def run_strokes(self, driver, strokes, upper, cancelled, on_stage):
+    def run_strokes(self, driver, strokes, upper, cancelled, on_stage, fallback=None):
         """! @brief Execute prepared strokes after an explicit elevated approach."""
         self.strokes = copy.deepcopy(strokes)
         def step(name, action):
@@ -54,6 +54,12 @@ class StrokeDrawing:
                 raise RuntimeError(f'Drawing stage {name} failed verification')
             self.results.append({'stage': name, 'result': copy.deepcopy(result)})
 
+        def vertical(name, z):
+            target = copy.deepcopy(driver.current_pose().position)
+            target.z = z
+            step(name, lambda: driver.linear(target))
+
+        fallback = fallback or {}
         for i, stroke in enumerate(self.strokes, 1):
             previous_end = self.strokes[i-2][-1].position if i > 1 else None
             same_start = previous_end is not None and all(
@@ -64,11 +70,24 @@ class StrokeDrawing:
                 transfer.z = upper.position.z
                 step(f'{i}_transfer', lambda: driver.linear(transfer))
             # Lower vertically at the achieved start, avoiding lateral motion.
-            start = copy.deepcopy(driver.current_pose().position)
-            start.z = stroke[0].position.z
-            step(f'{i}_lower', lambda: driver.linear(start))
-            step(f'{i}_draw', lambda: driver.path(stroke))
-            lift = copy.deepcopy(driver.current_pose().position)
-            lift.z = upper.position.z
-            step(f'{i}_lift', lambda: driver.linear(lift))
+            depth_z = stroke[0].position.z
+            vertical(f'{i}_lower', depth_z)
+            if i in fallback:
+                def draw():
+                    result = driver.path(stroke, allow_plan_retry=True)
+                    if result is None:
+                        return {'passed': True, 'planned_only': True, 'fallback': True}
+                    return result
+
+                step(f'{i}_draw', draw)
+                if self.results[-1]['result'].get('fallback'):
+                    for part, path in enumerate(fallback[i], 1):
+                        if part > 1:
+                            vertical(f'{i}_fallback_{part}_lower', depth_z)
+                        step(f'{i}_fallback_{part}_draw', lambda: driver.path(path))
+                        vertical(f'{i}_fallback_{part}_lift', upper.position.z)
+                    continue
+            else:
+                step(f'{i}_draw', lambda: driver.path(stroke))
+            vertical(f'{i}_lift', upper.position.z)
         return copy.deepcopy(self.results)
