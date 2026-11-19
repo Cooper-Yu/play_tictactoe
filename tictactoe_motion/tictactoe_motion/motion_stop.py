@@ -56,7 +56,7 @@ class MotionStop:
         response.message = self.status['message']
         return response
 
-    def request(self):
+    def request(self, *, confirmation_timeout=None):
         """! @brief Invalidate old work and begin or retry a bounded software stop."""
         self.node.cancel_planning()
         recording = getattr(self.node, 'pose_recording_demo', None)
@@ -75,7 +75,9 @@ class MotionStop:
         settle_timer = getattr(self.execution, 'settle_timer', None)
         if settle_timer is not None:
             settle_timer.cancel()
-        self.deadline = time.monotonic() + self.node.settings['stop_timeout']
+        timeout = (self.node.settings['stop_timeout'] if confirmation_timeout is None
+                   else confirmation_timeout)
+        self.deadline = time.monotonic() + timeout
         self.last_sequence = self.node.joint_state_sequence
         self.last_stamp = None
         self.previous = None

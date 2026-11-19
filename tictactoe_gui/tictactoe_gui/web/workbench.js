@@ -19,12 +19,16 @@ async function post(path, data) {
 async function command(data) {
   if (requestBusy) return;
   requestBusy = true; renderControls();
-  try { await post('api/command', data); state={...state,busy:true,state:'queued'}; void poll(); }
+  try {
+    await post('api/command', data);
+    if (data.kind !== 'acknowledge_recovery') state={...state,busy:true,state:'queued'};
+    await poll();
+  }
   catch (error) {toast(error.message);}
   finally {requestBusy = false; renderControls();}
 }
 function renderControls() {
-  const blocked = requestBusy || state.busy || ['connecting','offline','blocked','stopping'].includes(state.state) || !state.fresh;
+  const blocked = requestBusy || state.busy || ['connecting','offline','blocked','stopping','recovering'].includes(state.state) || !state.fresh;
   for (const button of document.querySelectorAll('[data-axis], #plan-preset, #record')) button.disabled = blocked || (button.dataset.axis==='z' && Number($('step').value)>.02);
   $('real-drawing').hidden = state.environment !== 'real';
   $('drawing-hint').hidden = state.environment !== 'real';
@@ -33,9 +37,13 @@ function renderControls() {
   $('execute').disabled = blocked || !state.plan;
   $('return').disabled = blocked || !state.records?.[selected];
   $('delete').disabled = blocked || !state.records?.[selected];
-  $('switch-camera').disabled = requestBusy || state.busy || !state.topics?.length;
+  $('switch-camera').disabled = blocked || !state.topics?.length;
+  const canConfirm = state.state==='recovering' && state.feedback_recovery?.phase==='confirmation';
+  $('ack-recovery').hidden = !canConfirm;
+  $('ack-recovery').disabled = requestBusy || !canConfirm;
 }
 $('step').onchange=renderControls;
+$('ack-recovery').onclick=()=>command({kind:'acknowledge_recovery',job:state.feedback_recovery.job});
 function renderRecords() {
   const records = state.records || {};
   const names = [...new Set([...fixedNames, ...Object.keys(records)])];

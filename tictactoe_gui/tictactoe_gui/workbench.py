@@ -13,6 +13,8 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+from tictactoe_gui.feedback_recovery import FeedbackRecovery
+
 
 def enhance_frame(frame, query):
     """! @brief Reuse the verified Python enhancer for full frames or normalized ROIs."""
@@ -137,6 +139,9 @@ class WorkbenchSession:
         self.shutdown = threading.Event()
         self.token = secrets.token_urlsafe(24)
         self.frames = {}
+        self.active_operation = None
+        self.last_known_pose = None
+        self.recovery = None
         self.state = dict(state='connecting', message='正在连接仿真', busy=False,
                           environment=environment, pose=None, joints={}, fresh=False,
                           camera={}, topics=[], records={}, plan=None, comparison=None, job=0)
@@ -151,8 +156,12 @@ class WorkbenchSession:
             return copy.deepcopy(self.state)
 
     def submit(self, data):
+        if data.get('kind') == 'acknowledge_recovery':
+            return self.acknowledge_recovery(data.get('job'))
         command = validate_command(data, self.environment)
         with self.lock:
+            if self.recovery is not None:
+                raise RuntimeError(FeedbackRecovery.messages[self.recovery.phase])
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked', 'stopping'):
                 raise RuntimeError('尚未就绪或已有操作正在进行')
             if command['kind'] == 'execute' and not self.state['plan']:
@@ -165,17 +174,61 @@ class WorkbenchSession:
 
     def request_stop(self, reason='调用方请求停止', source='caller'):
         """! @brief Preserve the first stop cause until the stopped job is inspected."""
-        event = None
+        event = incident = None
         with self.lock:
             if self.state.get('last_stop', {}).get('job') != self.state['job']:
                 event = dict(job=self.state['job'], reason=reason, source=source,
                              monotonic_s=time.monotonic())
                 self.state['last_stop'] = event
+                if source == 'feedback_guard' and self.environment == 'real':
+                    incident = dict(job=event['job'], operation=self.active_operation,
+                                    stage_message=self.state['message'],
+                                    drawing_progress=copy.deepcopy(self.state.get('drawing_progress')),
+                                    last_known_pose=copy.deepcopy(self.last_known_pose),
+                                    last_known_joints=copy.deepcopy(self.state['joints']))
+                    self.recovery = FeedbackRecovery(event['monotonic_s'], incident)
+                    self.state['feedback_recovery'] = self.recovery.snapshot()
             self.stop.set()
             cause = self.state.get('last_stop', {}).get('reason', reason)
-            self.state.update(state='stopping', message='正在停止：'+cause)
+            self.state.update(state='stopping', plan=None, message='正在停止：'+cause)
         if event is not None:
             print('WORKBENCH_STOP '+json.dumps(event, ensure_ascii=False), flush=True)
+            if incident is not None:
+                print('WORKBENCH_FEEDBACK_INCIDENT '+
+                      json.dumps(incident, ensure_ascii=False), flush=True)
+
+    def finish_stop(self):
+        with self.lock:
+            self.stop.clear()
+            self.state.update(busy=False, plan=None)
+            if self.recovery is None:
+                reason = self.state.get('last_stop', {}).get('reason', '原因未记录')
+                self.state.update(state='ready', message='已停止，待执行规划已清除；'+reason)
+            else:
+                self.state.update(state='recovering',
+                                  message=FeedbackRecovery.messages[self.recovery.phase])
+
+    def observe_recovery(self, now, stopped, sample, tolerance):
+        with self.lock:
+            if self.recovery is None:
+                return
+            self.recovery.observe(now, stopped and not self.stop.is_set(), sample, tolerance)
+            phase = self.recovery.phase
+            self.state['feedback_recovery'] = self.recovery.snapshot()
+            if not self.stop.is_set() or phase == 'timeout':
+                self.state.update(state='recovering', message=FeedbackRecovery.messages[phase])
+
+    def acknowledge_recovery(self, job):
+        with self.lock:
+            if (type(job) is not int or self.recovery is None
+                    or job != self.recovery.incident['job'] or self.stop.is_set()
+                    or self.state['busy'] or not self.state['fresh']
+                    or not self.recovery.can_acknowledge(time.monotonic())):
+                raise RuntimeError('尚无可确认的反馈恢复，请检查工作台状态')
+            self.recovery = None
+            self.state.update(state='ready', plan=None, feedback_recovery=None,
+                              message='已确认恢复。请检查板面并选择下一步动作')
+            return job
 
     def frame(self, key):
         with self.lock:

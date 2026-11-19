@@ -1,4 +1,4 @@
-"""Simulation-only localization operations over the existing motion/recording modules."""
+"""Localization operations over the existing motion and recording modules."""
 import copy
 import hashlib
 import json
@@ -6,6 +6,8 @@ import math
 import queue
 import time
 from collections import deque
+
+from tictactoe_gui.feedback_recovery import FeedbackRecovery, recovery_sample
 
 
 def workbench_worker(session):
@@ -110,7 +112,10 @@ def workbench_worker(session):
                                  source='feedback_guard')
         if session.stop.is_set() and not stopping['handled']:
             stopping['handled'] = True
-            driver.execution.stop.request()
+            if session.recovery is None:
+                driver.execution.stop.request()
+            else:
+                driver.execution.stop.request(confirmation_timeout=FeedbackRecovery.timeout)
         if now-last_publish['at'] < .15:
             return
         last_publish['at'] = now
@@ -125,6 +130,15 @@ def workbench_worker(session):
                              math.atan2(2*(q.w*q.z+q.x*q.y), 1-2*(q.y*q.y+q.z*q.z))])
         state = driver.node.current_joint_state
         joints = dict(zip(state.name, state.position)) if state is not None else {}
+        if pose is not None:
+            session.last_known_pose = pose
+        if session.recovery is not None:
+            sample = recovery_sample(
+                now, driver.node.get_clock().now().nanoseconds*1e-9, state, transform,
+                driver.node.last_joint_state_received, driver.node.settings['feedback_max_age'],
+            )
+            stopped = not driver.execution.is_executing and not driver.execution.stop.blocked
+            session.observe_recovery(now, stopped, sample, driver.node.settings['settle_joint_tolerance'])
         age = now-camera['received'] if camera['received'] is not None else None
         meta = {key: value for key, value in camera.items() if key not in ('subscription', 'received')}
         threshold = min(10., max(5., 3*(camera['period_s'] or 0.)))
@@ -357,8 +371,7 @@ def workbench_worker(session):
                 except queue.Empty:
                     pass
                 if not driver.execution.stop.blocked and not driver.execution.is_executing:
-                    session.update(state='ready', busy=False, plan=None, message='已停止，待执行规划已清除；'+session.status().get('last_stop', {}).get('reason', '原因未记录'))
-                    session.stop.clear()
+                    session.finish_stop()
                     stopping['handled'] = False
                 continue
             try:
@@ -366,6 +379,9 @@ def workbench_worker(session):
             except queue.Empty:
                 continue
             try:
+                session.active_operation = command['kind']
+                if command['kind'] in ('draw', 'canvas', 'reset'):
+                    session.update(drawing_progress=None)
                 session.update(state='running', message='正在处理 '+command['kind'])
                 if session.stop.is_set():
                     raise RuntimeError('操作已取消')
@@ -373,12 +389,15 @@ def workbench_worker(session):
                 session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '绘图运动完成，已抬笔；请检查实际笔迹' if command['kind'] in ('draw', 'canvas') else '操作完成'))
             except Exception as error:
                 driver.node.invalidate_plan()
-                if driver.execution.is_executing:
+                if driver.execution.is_executing and not session.stop.is_set():
                     driver.execution.stop.request()
                 blocked = driver.execution.is_executing or driver.execution.stop.blocked
-                session.update(state='blocked' if blocked else 'ready', busy=False,
-                               plan=None, message=str(error))
-            session.jobs.task_done()
+                if not session.stop.is_set() or session.recovery is None:
+                    session.update(state='blocked' if blocked else 'ready', busy=False,
+                                   plan=None, message=str(error))
+            finally:
+                session.active_operation = None
+                session.jobs.task_done()
     finally:
         driver.client.destroy_timer(timer)
         driver.close()
