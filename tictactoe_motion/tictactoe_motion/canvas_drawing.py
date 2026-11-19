@@ -66,6 +66,29 @@ class CanvasDrawing(StrokeDrawing):
             planner.canvas_native_timing = False
             driver.parameters(**requested)
 
+    @staticmethod
+    def real_approach(driver, start, destination, cancelled):
+        """Try one verified move, then split a rejected horizontal joint excursion."""
+        if cancelled():
+            raise RuntimeError('Drawing cancelled before canvas approach')
+        result = driver.linear(destination, allow_excursion_retry=True)
+        if result is not None:
+            return result
+        distance = math.hypot(destination.x-start.x, destination.y-start.y)
+        if distance <= .06 or abs(destination.z-start.z) > .0001:
+            raise RuntimeError('Canvas approach exceeds the joint excursion limit')
+        count = math.ceil(distance/.06)
+        for index in range(1, count+1):
+            if cancelled():
+                raise RuntimeError('Drawing cancelled during canvas approach')
+            target = copy.deepcopy(destination)
+            target.x = start.x + (destination.x-start.x)*index/count
+            target.y = start.y + (destination.y-start.y)*index/count
+            result = driver.linear(target)
+            if not isinstance(result, dict) or result.get('passed') is not True:
+                raise RuntimeError('Canvas approach segment failed verification')
+        return dict(result, approach_segments=count)
+
     def _run(self, driver, cancelled, on_stage):
         self.results=[]
         if cancelled():raise RuntimeError('Drawing cancelled')
@@ -105,8 +128,10 @@ class CanvasDrawing(StrokeDrawing):
             # A <=10 micrometer approach is already satisfied; do not execute a zero-length plan.
             result = dict(passed=True, skipped=True, reason='already_at_approach',
                           position_error_m=distance, orientation_error_rad=0.)
+        elif self.canvas.environment == 'real':
+            result = self.real_approach(driver, actual, upper.position, cancelled)
         else:
-            result=driver.linear(upper.position) if self.canvas.environment == 'real' else driver.pose(upper)
+            result = driver.pose(upper)
         if not isinstance(result,dict) or result.get('passed') is not True:raise RuntimeError('Canvas approach failed')
         self.results.append({'stage':'approach','result':copy.deepcopy(result)})
         if self.canvas.environment == 'real' and transfer_z > self.upper_z+0.0001:

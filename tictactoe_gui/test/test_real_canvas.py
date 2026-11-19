@@ -173,3 +173,30 @@ def test_plan_rejection_retries_before_any_ink_and_execution_error_stops():
         drawing.run_strokes(failing_driver, [[a,b,c]], upper, lambda: False, lambda _: None,
                             {1:[[a,b],[b,c]]})
     assert not failing_driver.draws
+
+
+def test_real_canvas_approach_splits_only_rejected_plan():
+    from geometry_msgs.msg import Point
+    from tictactoe_motion.canvas_drawing import CanvasDrawing
+
+    class Driver:
+        def __init__(self, reject):
+            self.reject = reject
+            self.calls = []
+
+        def linear(self, point, *, allow_excursion_retry=False):
+            self.calls.append((point, allow_excursion_retry))
+            return None if allow_excursion_retry and self.reject else {'passed': True}
+
+    start = Point(x=0.12, y=-0.1, z=.216)
+    end = Point(x=0.12, y=.03, z=.216)
+    direct = Driver(False)
+    assert CanvasDrawing.real_approach(direct, start, end, lambda: False)['passed']
+    assert len(direct.calls) == 1
+    split = Driver(True)
+    result = CanvasDrawing.real_approach(split, start, end, lambda: False)
+    assert result['approach_segments'] == 3
+    assert [point.y for point, _ in split.calls[1:]] == pytest.approx([-.1+.13/3, -.1+.26/3, .03])
+    assert all(point.z == .216 and not retry for point, retry in split.calls[1:])
+    with pytest.raises(RuntimeError, match='cancelled'):
+        CanvasDrawing.real_approach(split, start, end, lambda: True)
