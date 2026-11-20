@@ -128,7 +128,7 @@ def real_game_worker(session, *, url, perception, restore=None):
             if cells != expected:
                 raise RuntimeError('The live board differs from the saved game, Check calibration or board contents')
             session.update(game=saved)
-        session.update(state='ready', busy=False, message='Real vision game connected')
+        session.update(state='ready', busy=False, message='Real vision game connected. Start a new game to clear and prepare the physical board.')
         while not session.shutdown.is_set():
             try:
                 job = session.jobs.get(timeout=.2)

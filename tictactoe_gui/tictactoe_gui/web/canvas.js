@@ -56,7 +56,7 @@ $('undo').onclick=()=>{strokes.pop();draftChanged=true;sentJob=null;localMessage
 $('clear').onclick=()=>{strokes=[];draftChanged=true;sentJob=null;localMessage='Draft cleared, Real tablet contents preserved';paint();};
 async function jsonRequest(path,options={}){const r=await fetch(path,{...options,signal:AbortSignal.timeout(5000)});const data=await r.json();if(!r.ok)throw Error(r.status===403?'Session changed, Refresh the page and retry':data.error||`Request failed ${r.status}`);return data;}
 async function command(path,data={}){
- if(pending)return;epoch++;pending=true;localMessage='Submitting…';paint();
+ if(pending)return;if(!token){localMessage='Waiting for connection readiness';paint();return;}epoch++;pending=true;localMessage='Submitting…';paint();
  try{const ack=await jsonRequest(path,{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Token':token},body:JSON.stringify(data)});
   if(path==='api/canvas'){sentJob=ack.job;draftChanged=false;}
   if(data.kind!=='acknowledge_recovery'){
@@ -94,12 +94,13 @@ async function poll(){
  finally{polling=false;paint();}
 }
 async function start(){try{const config=await jsonRequest('api/config');token=config.token;configure(config.canvas);}catch(e){localMessage=e.message;}await poll();setInterval(()=>void poll(),450);}
+paint();
 start();
 
 function resumeCanvas() {
  if(document.hidden)return;
  // Preserve local strokes and reconcile status; do not resend the drawing.
- token=null;imageSequence=undefined;
+ token=null;imageSequence=undefined;paint();
  void poll();
 }
 document.addEventListener('visibilitychange',resumeCanvas);

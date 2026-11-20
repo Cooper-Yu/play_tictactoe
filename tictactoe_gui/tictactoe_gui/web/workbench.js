@@ -18,6 +18,7 @@ async function post(path, data) {
 }
 async function command(data) {
   if (requestBusy) return;
+  if (!token) {toast('Waiting for connection readiness'); return;}
   requestBusy = true; renderControls();
   try {
     await post('api/command', data);
@@ -28,7 +29,7 @@ async function command(data) {
   finally {requestBusy = false; renderControls();}
 }
 function renderControls() {
-  const blocked = requestBusy || state.busy || ['connecting','offline','blocked','stopping','recovering'].includes(state.state) || !state.fresh;
+  const blocked = !token || requestBusy || state.busy || ['connecting','offline','blocked','stopping','recovering'].includes(state.state) || !state.fresh;
   for (const button of document.querySelectorAll('[data-axis], #plan-preset, #record')) button.disabled = blocked || (button.dataset.axis==='z' && Number($('step').value)>.02);
   $('real-drawing').hidden = state.environment !== 'real';
   $('drawing-hint').hidden = state.environment !== 'real';
@@ -181,6 +182,7 @@ $('enhancement-mode').onchange=()=>{betaRevision++;updateEnhancementControls();}
 for(const id of ['ink-strength','ink-tolerance']) $(id).oninput=()=>{$(id+'-value').textContent=$(id).value;betaRevision++;};
 updateEnhancementControls();
 async function start(){try{const response=await fetch('api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('Workbench connection failed, Refresh the page');}}
+renderControls();
 start();
 
 let resuming=false;

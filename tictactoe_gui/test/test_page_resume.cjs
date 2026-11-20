@@ -34,17 +34,18 @@ vm.runInContext(game.slice(game.indexOf('let pollTimer;'),
   assert.equal(context.frame, undefined);
   assert.equal(reads, 2);
 
-  const canvasEvents = {};
+  const canvasEvents = {}; let canvasPaints=0;
   const canvas = {
     document: {hidden:false, addEventListener:(name,fn)=>{canvasEvents[name]=fn;}},
     window: {addEventListener:(name,fn)=>{canvasEvents[name]=fn;}},
-    token:'old', imageSequence:10, strokes:[[1,2]], poll:()=>{reads++;}
+    token:'old', imageSequence:10, strokes:[[1,2]], paint:()=>{canvasPaints++;}, poll:()=>{reads++;}
   };
   vm.createContext(canvas);
   const source = fs.readFileSync(path.join(web,'canvas.js'),'utf8');
   vm.runInContext(source.slice(source.indexOf('function resumeCanvas()')),canvas);
   canvasEvents.focus();
   assert.equal(canvas.token,null);
+  assert.equal(canvasPaints,1,'Controls must disable immediately while a new session token is pending');
   assert.equal(canvas.imageSequence,undefined);
   assert.deepEqual(canvas.strokes,[[1,2]],'Draft strokes must survive focus changes');
   console.log('PASS: background recovery, one polling loop, no command replay, canvas draft preserved');
