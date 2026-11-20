@@ -2,7 +2,7 @@
 import math
 from controller_manager_msgs.srv import ListControllers
 import rclpy
-from tictactoe_motion.simulation_driver import SimulationDriver
+from tictactoe_driver.motion_driver import MotionDriver
 
 
 def require_real_profile(environment, use_sim_time, names):
@@ -17,10 +17,10 @@ def require_real_profile(environment, use_sim_time, names):
         raise ValueError('Real Piper driver / platform bridge not discovered')
 
 
-class RealRobotDriver(SimulationDriver):
+class RealRobotDriver(MotionDriver):
     """! @brief Reuse bounded mechanics with a separate hardware-only preflight.
 
-    The simulation preflight remains unchanged. This adapter requires fresh
+    This adapter requires fresh
     wall-clock feedback, one physical controller and one motion owner. It never
     enables hardware or moves on startup.
     """

@@ -3,14 +3,14 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from simulation_support import SimulationHarness
+from tictactoe_driver.simulation_driver import SimulationDriver
 
 
 def test_preflight_waits_for_arm_controller(monkeypatch, tmp_path):
     monkeypatch.setenv('ROS_LOCALHOST_ONLY', '1')
     service = Mock()
     service.service_is_ready.return_value = True
-    harness = SimulationHarness.__new__(SimulationHarness)
+    harness = SimulationDriver.__new__(SimulationDriver)
     harness.output = tmp_path
     harness.recording = SimpleNamespace(environment='sim', recorder=SimpleNamespace(poses_file=tmp_path/'poses.json'))
     harness.node = Mock()
@@ -31,7 +31,7 @@ def test_preflight_waits_for_arm_controller(monkeypatch, tmp_path):
 
 def test_preflight_allows_delayed_graph_discovery(monkeypatch, tmp_path):
     monkeypatch.setenv('ROS_LOCALHOST_ONLY', '1')
-    harness=SimulationHarness.__new__(SimulationHarness)
+    harness=SimulationDriver.__new__(SimulationDriver)
     harness.output=tmp_path
     harness.recording=SimpleNamespace(environment='sim',recorder=SimpleNamespace(poses_file=tmp_path/'p.json'))
     harness.node=Mock()

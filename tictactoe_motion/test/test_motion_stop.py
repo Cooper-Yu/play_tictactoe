@@ -9,6 +9,7 @@ import pytest
 import rclpy
 from action_msgs.msg import GoalInfo, GoalStatus
 from action_msgs.srv import CancelGoal
+from geometry_msgs.msg import Pose, TransformStamped
 from moveit_msgs.action import ExecuteTrajectory
 from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
@@ -207,13 +208,65 @@ def test_transport_errors_remain_blocked(node, stage):
     assert execution.is_executing
 
 
+def test_success_keeps_execution_busy_until_settled_feedback_and_matching_tf(node):
+    execution, handle = active(node)
+    transform = TransformStamped()
+    transform.transform.rotation.w = 1.0
+    transform.header.stamp.sec = 1
+    execution.execution_start_transform = transform
+    execution.planned_target_pose = Pose()
+    execution.planned_target_pose.orientation.w = 1.0
+    node.get_current_pose = Mock(return_value=transform)
+    execution.on_verification = Mock()
+
+    sample(node, 1)
+    terminal(execution, handle, GoalStatus.STATUS_SUCCEEDED)
+    checker = execution.result_checker
+    assert checker.active and execution.is_executing
+    checker.check_settled_state()
+    assert checker.previous_settle_positions is None
+    for tick in range(2, 5):
+        sample(node, tick)
+        checker.check_settled_state()
+
+    assert checker.stable_sample_count == 2
+    assert execution.is_executing
+    assert execution.last_comparison is None
+    assert not execution.execute_planned_trajectory(None, None)
+    execution.on_verification.assert_not_called()
+
+    transform.header.stamp.sec = 5
+    sample(node, 5)
+    checker.check_settled_state()
+    assert not checker.active and not execution.is_executing
+    assert execution.stop.status["state"] == "idle"
+    assert execution.last_comparison["position_error_m"] == 0.0
+    execution.on_verification.assert_called_once_with(None, execution.last_comparison)
+
+
+def test_result_check_timeout_keeps_execution_blocked(node, monkeypatch):
+    clock = [100.]
+    monkeypatch.setattr(time, 'monotonic', lambda: clock[0])
+    execution, handle = active(node)
+    terminal(execution, handle, GoalStatus.STATUS_SUCCEEDED)
+    checker = execution.result_checker
+    clock[0] = checker.settle_deadline
+    checker.check_settled_state()
+    assert not checker.active
+    assert execution.stop.blocked and execution.is_executing
+    assert execution.last_comparison is None
+
+
 def test_stopping_during_normal_settling_replaces_timer(node):
     execution, _ = active(node)
     execution.execution_terminal = True
     execution.start_settle_check()
-    old_timer = execution.settle_timer
+    old_timer = execution.result_checker.timer
     execution.stop.request()
     assert old_timer.is_canceled()
+    execution.result_checker.check_settled_state()
+    assert execution.last_comparison is None
+    assert execution.is_executing
     settle(node)
     assert not execution.is_executing
 

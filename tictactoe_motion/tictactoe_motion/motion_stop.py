@@ -72,9 +72,7 @@ class MotionStop:
         self.generation += 1
         self.cancel_pending = False
         self.execution.is_executing = True
-        settle_timer = getattr(self.execution, 'settle_timer', None)
-        if settle_timer is not None:
-            settle_timer.cancel()
+        self.execution.result_checker.cancel()
         timeout = (self.node.settings['stop_timeout'] if confirmation_timeout is None
                    else confirmation_timeout)
         self.deadline = time.monotonic() + timeout

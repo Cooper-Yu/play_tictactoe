@@ -1,8 +1,6 @@
 """Apply Cartesian trajectory checks and retry rules."""
 
-
-class JointExcursionError(ValueError):
-    """A planned trajectory exceeds the allowed joint excursion."""
+from tictactoe_motion.trajectory_checks import JointExcursionError
 
 
 def accept_linear(driver, *, allow_retry):

@@ -16,14 +16,14 @@ def workbench_worker(session):
     from cv_bridge import CvBridge
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import Image
-    from tictactoe_motion.simulation_driver import SimulationDriver
+    from tictactoe_driver.simulation_driver import SimulationDriver
 
     shot_index = session.output/'screenshots.json'
     shots = json.loads(shot_index.read_text()) if shot_index.exists() else {}
     if not isinstance(shots, dict):
         raise ValueError('Screenshot index must be an object')
     if session.environment == 'real':
-        from tictactoe_motion.real_robot_driver import RealRobotDriver
+        from tictactoe_driver.real_robot_driver import RealRobotDriver
         driver = RealRobotDriver(session.output, install_signal_handlers=False)
     else:
         driver = SimulationDriver(session.output, install_signal_handlers=False)

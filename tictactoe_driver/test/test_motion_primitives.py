@@ -1,26 +1,28 @@
 """Verify that the driver composes the three motion types and preserves their checks."""
 
+from types import SimpleNamespace
 from unittest.mock import Mock, call
 
 from geometry_msgs.msg import Pose
 import pytest
 
-from tictactoe_motion import simulation_driver
+from tictactoe_driver import motion_driver
 from tictactoe_motion.motion_primitives import (
     CartesianMotion,
     JointExcursionError,
     JointMotion,
     PoseMotion,
 )
-from tictactoe_motion.real_robot_driver import RealRobotDriver
-from tictactoe_motion.simulation_driver import SimulationDriver
+from tictactoe_driver.real_robot_driver import RealRobotDriver
+from tictactoe_driver.simulation_driver import SimulationDriver
 
 
 @pytest.mark.parametrize("driver_class", [SimulationDriver, RealRobotDriver])
 def test_both_drivers_assemble_the_same_motion_types(monkeypatch, tmp_path, driver_class):
-    monkeypatch.setattr(simulation_driver.rclpy, "init", Mock())
+    monkeypatch.setattr(motion_driver.rclpy, "init", Mock())
     for name in ("SingleThreadedExecutor", "MotionPlanner", "MotionDemo", "PoseRecordingDemo", "Node"):
-        monkeypatch.setattr(simulation_driver, name, Mock())
+        monkeypatch.setattr(motion_driver, name, Mock())
+    assert driver_class.__bases__ == (motion_driver.MotionDriver,)
     driver = driver_class(tmp_path)
     for member, motion_class in (
         (driver.cartesian_motion, CartesianMotion),
@@ -55,10 +57,15 @@ def test_cartesian_stroke_uses_achieved_height_and_orientation():
     waypoint.position.x = .23
     waypoint.position.y = .12
     waypoint.position.z = .3
-    driver.execute.return_value = {"passed": True}
+    driver.node.settings = {
+        "return_position_tolerance": .001, "return_orientation_tolerance": .01,
+    }
+    driver.execute.return_value = {
+        "passed": True, "position_error_m": .0005, "orientation_error_rad": .005,
+    }
     result = CartesianMotion(driver).path([Pose(), waypoint], .4, speed=.2)
     poses = driver.node.cartesian_planner.request_path.call_args.args[0]
-    assert result is driver.verified_pose_result.return_value
+    assert result is driver.execute.return_value
     assert len(poses) == 2 and poses[0] == anchor
     assert poses[1].position.z == anchor.position.z
     assert poses[1].orientation == anchor.orientation
@@ -82,13 +89,24 @@ def test_rejected_linear_plan_can_return_for_retry_without_execution():
 def test_pose_motion_checks_the_plan_before_executing():
     driver = Mock()
     target = Pose()
-    assert PoseMotion(driver).move(target) is driver.verified_pose_result.return_value
+    driver.node.settings = {
+        "return_position_tolerance": .001, "return_orientation_tolerance": .01,
+    }
+    driver.execute.return_value = {
+        "passed": True, "position_error_m": .0005, "orientation_error_rad": .005,
+    }
+    assert PoseMotion(driver).move(target) is driver.execute.return_value
     assert [entry[0] for entry in driver.mock_calls if entry[0]] == [
         "check_motion_guard", "node.request_pose_plan", "until", "guard",
-        "execute", "verified_pose_result",
+        "execute",
     ]
     driver.node.request_pose_plan.assert_called_once_with(target, orientation_tolerance=.001)
     driver.guard.assert_called_once_with(2.0)
+
+    driver.execute.return_value["orientation_error_rad"] = .02
+    with pytest.raises(AssertionError):
+        PoseMotion(driver).move(target)
+    assert driver.execute.return_value["passed"] is False
 
 
 def test_joint_motion_named_and_recorded_targets_use_verified_execution():
@@ -107,3 +125,48 @@ def test_joint_motion_named_and_recorded_targets_use_verified_execution():
     assert [entry[0] for entry in driver.mock_calls].index("guard") < [
         entry[0] for entry in driver.mock_calls
     ].index("execute")
+
+
+@pytest.mark.parametrize("driver_class", [SimulationDriver, RealRobotDriver])
+@pytest.mark.parametrize(
+    "duration, error",
+    [(120, None), (121, "120-second"), (float("nan"), "must be finite")],
+)
+def test_both_drivers_bound_trajectory_duration(driver_class, duration, error):
+    driver = driver_class.__new__(driver_class)
+    point = SimpleNamespace(time_from_start=SimpleNamespace(sec=duration, nanosec=0))
+    trajectory = SimpleNamespace(joint_trajectory=SimpleNamespace(points=[point]))
+    driver.node = SimpleNamespace(planned_trajectory=trajectory)
+    driver.execution = SimpleNamespace(is_executing=False, last_comparison={"passed": True})
+    driver.results = []
+    driver.call = Mock()
+
+    if error is None:
+        assert driver.execute() == {"passed": True}
+        driver.call.assert_called_once_with("execute_planned_trajectory")
+    else:
+        with pytest.raises(ValueError, match=error):
+            driver.execute()
+        driver.call.assert_not_called()
+
+
+def test_named_driver_checks_stop_after_async_fk_before_planning():
+    driver=SimulationDriver.__new__(SimulationDriver)
+    driver.node=Mock()
+    stopped=[False]
+    driver.motion_guard=lambda:stopped[0]
+    def fk(name):
+        stopped[0]=True
+        return {}, Pose()
+    driver.named_target=fk
+    driver.joint_motion = JointMotion(driver)
+    with pytest.raises(RuntimeError, match="Sequence cancelled"):driver.named('zero')
+    driver.node.request_joint_plan.assert_not_called()
+
+
+def test_driver_rechecks_stop_before_execution_service():
+    driver=SimulationDriver.__new__(SimulationDriver)
+    driver.motion_guard=lambda:True
+    driver.call=Mock()
+    with pytest.raises(RuntimeError):driver.execute()
+    driver.call.assert_not_called()

@@ -4,7 +4,8 @@
 
 - `tictactoe_game` defines board rules, scoring, and move selection.
 - `tictactoe_coordinator` coordinates turns and dispatches drawing through the provided actions.
-- `tictactoe_motion` handles MoveIt, feedback, pose records, and drawing.
+- 	ictactoe_motion handles MoveIt, feedback, pose records, and drawing.
+- 	ictactoe_driver assembles the motion components and checks the simulation or real robot environment.
 - `tictactoe_perception` handles images and stable player-move confirmation.
 - `tictactoe_gui` serves the workstation, freehand canvas, and game pages.
 

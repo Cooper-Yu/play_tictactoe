@@ -4,18 +4,13 @@ from moveit_msgs.action import ExecuteTrajectory
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 import time
-from rclpy.time import Time
 import math
 from tictactoe_motion.motion_stop import MotionStop
+from tictactoe_motion.trajectory_result_checker import TrajectoryResultChecker
 
 
 class TrajectoryExecutor:
-    """!
-    @brief Execute planned trajectories and verify the settled robot state.
-
-    Handle execution requests and results, wait for joint feedback to settle,
-    and compare the final pose with the target pose.
-    """
+    """! @brief Send trajectories and keep execution active through verification."""
 
     def __init__(self, node):
         self.node = node
@@ -32,6 +27,9 @@ class TrajectoryExecutor:
             self.node, ExecuteTrajectory, self.settings["execute_action_name"]
         )
         self.stop = MotionStop(node, self)
+        self.result_checker = TrajectoryResultChecker(
+            node, self._verify_execution, self.stop.fail
+        )
 
     def execution_goal_response_callback(self, future):
         try:
@@ -86,75 +84,9 @@ class TrajectoryExecutor:
         self.start_settle_check()
 
     def start_settle_check(self):
-        previous_timer = getattr(self, 'settle_timer', None)
-        if previous_timer is not None:
-            self.node.destroy_timer(previous_timer)
-        self.last_settle_sequence = self.node.joint_state_sequence
-        self.previous_settle_positions = None
-        self.stable_sample_count = 0
-        self.settle_deadline = time.monotonic() + self.settings["settle_timeout"]
-        self.settle_timer = self.node.create_timer(self.settings["settle_period"], self.check_settled_state)
+        self.result_checker.start()
 
-    def check_settled_state(self):
-        if time.monotonic() >= self.settle_deadline:
-            self.settle_timer.cancel()
-            self.stop.fail("Timed out waiting for settled state")
-            return
-        if self.node.joint_state_sequence == self.last_settle_sequence:
-            return
-
-        self.last_settle_sequence = self.node.joint_state_sequence
-
-        current_positions = dict(
-            zip(
-                self.node.current_joint_state.name,
-                self.node.current_joint_state.position,
-            )
-        )
-
-        required_joints = [f"joint{i}" for i in range(1, 7)]
-        if any(name not in current_positions for name in required_joints):
-            self.previous_settle_positions = None
-            self.stable_sample_count = 0
-            return
-
-        positions = [current_positions[name] for name in required_joints]
-
-        if self.previous_settle_positions is None:
-            self.previous_settle_positions = positions
-            return
-
-        max_change = max(
-            abs(current - previous)
-            for current, previous in zip(positions, self.previous_settle_positions)
-        )
-        self.previous_settle_positions = positions
-
-        if max_change <= self.settings["settle_joint_tolerance"]:
-            self.stable_sample_count += 1
-        else:
-            self.stable_sample_count = 0
-
-        if self.stable_sample_count < self.settings["settle_samples"]:
-            return
-
-        if self.stable_sample_count == self.settings["settle_samples"]:
-            self.settled_joint_stamp = self.node.current_joint_state.header.stamp
-
-        actual_transform = self.node.get_current_pose()
-        if actual_transform is None:
-            return
-
-        tf_time = Time.from_msg(actual_transform.header.stamp).nanoseconds
-        stable_time = Time.from_msg(self.settled_joint_stamp).nanoseconds
-
-        if tf_time < stable_time:
-            return
-
-        self.settle_timer.cancel()
-        self.node.get_logger().info(
-            "Joint feedback settled; comparing execution result"
-        )
+    def _verify_execution(self, actual_transform):
         try:
             self.compare_execution_result(actual_transform)
         except Exception as error:
@@ -169,60 +101,12 @@ class TrajectoryExecutor:
             callback(self.target_record_name, self.last_comparison)
 
     def compare_execution_result(self, actual_transform):
-        start = self.execution_start_transform.transform.translation
-        actual = actual_transform.transform.translation
-        target = self.planned_target_pose.position
-        displacement = (actual.x - start.x, actual.y - start.y, actual.z - start.z)
-        position_error = math.dist(
-            (actual.x, actual.y, actual.z), (target.x, target.y, target.z)
+        self.last_comparison = self.result_checker.compare(
+            actual_transform,
+            self.execution_start_transform,
+            self.planned_target_pose,
+            self.target_joint_positions,
         )
-
-        qa = actual_transform.transform.rotation
-        qt = self.planned_target_pose.orientation
-        a = (qa.x, qa.y, qa.z, qa.w)
-        t = (qt.x, qt.y, qt.z, qt.w)
-        norm_a = math.sqrt(sum(v * v for v in a))
-        norm_t = math.sqrt(sum(v * v for v in t))
-        if norm_a == 0.0 or norm_t == 0.0:
-            self.node.get_logger().warning("Invalid quaternion")
-            return
-        dot = abs(sum(av * tv for av, tv in zip(a, t)))
-        cosine = min(1.0, max(0.0, dot / (norm_a * norm_t)))
-        angle_error = 2.0 * math.acos(cosine)
-
-        self.node.get_logger().info(f"Actual displacement (m): {displacement}")
-        self.node.get_logger().info(
-            f"Position error={position_error:.6f} m, "
-            f"orientation error={angle_error:.6f} rad"
-        )
-        self.last_comparison = {
-            "position_error_m": position_error,
-            "orientation_error_rad": angle_error,
-            "displacement_m": list(displacement),
-        }
-        target_joints = getattr(self, "target_joint_positions", None)
-        if target_joints is not None:
-            state = self.node.current_joint_state
-            actual_joints = dict(zip(state.name, state.position))
-            joint_errors = {
-                name: abs(actual_joints[name] - target)
-                for name, target in target_joints.items()
-            }
-            max_error = max(joint_errors.values())
-            passed = (
-                max_error <= self.settings["return_joint_tolerance"]
-                and position_error <= self.settings["return_position_tolerance"]
-                and angle_error <= self.settings["return_orientation_tolerance"]
-            )
-            self.last_comparison.update(
-                joint_errors_rad=joint_errors,
-                max_joint_error_rad=max_error,
-                passed=passed,
-            )
-            self.node.get_logger().info(
-                f"Return verification {'PASSED' if passed else 'FAILED'}: "
-                f"max joint error={max_error:.6f} rad"
-            )
 
     def execute_planned_trajectory(
         self, planned_trajectory, target_pose, target_joint_positions=None,
@@ -312,3 +196,44 @@ class TrajectoryExecutor:
             self.stop.fail(f"Failed to send execution request: {error}")
             return False
         return True
+
+
+def run_trajectory(driver, timeout=45):
+    """Trigger execution and collect the pose samples and final comparison."""
+    driver.check_motion_guard()
+    driver.samples = []
+    last_stamp = None
+    end = driver.node.planned_trajectory.joint_trajectory.points[-1].time_from_start
+    planned_duration = end.sec + end.nanosec * 1e-9
+    if not math.isfinite(planned_duration):
+        raise ValueError('Planned trajectory duration must be finite')
+    if planned_duration > 120:
+        raise ValueError('Planned trajectory exceeds the 120-second duration limit')
+    timeout = max(timeout, 2 * planned_duration + 10)
+    started = time.monotonic()
+    print(f'EXECUTE planned_duration={planned_duration:.3f}s wall_budget={timeout:.3f}s', flush=True)
+    driver.call('execute_planned_trajectory')
+    deadline = time.monotonic() + timeout
+    while driver.execution.is_executing:
+        assert time.monotonic() < deadline, 'execution did not finish'
+        driver.executor.spin_once(timeout_sec=0.02)
+        transform = driver.node.get_current_pose()
+        if transform is None:
+            continue
+        stamp = (transform.header.stamp.sec, transform.header.stamp.nanosec)
+        if stamp == last_stamp:
+            continue
+        last_stamp = stamp
+        p = transform.transform.translation
+        q = transform.transform.rotation
+        driver.samples.append({'stamp': list(stamp), 'xyz': [p.x, p.y, p.z],
+                             'xyzw': [q.x, q.y, q.z, q.w]})
+    result = copy.deepcopy(driver.execution.last_comparison)
+    assert result is not None, driver.execution.stop.status
+    driver.results.append({
+        'comparison': result,
+        'samples': copy.deepcopy(driver.samples),
+        'planned_duration_s': planned_duration,
+        'wall_duration_s': time.monotonic() - started,
+    })
+    return result

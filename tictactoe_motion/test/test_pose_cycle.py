@@ -6,7 +6,6 @@ from geometry_msgs.msg import Pose, TransformStamped, Point
 import rclpy
 from tictactoe_motion.pose_cycle import PoseCycle
 from tictactoe_motion.motion_planner import MotionPlanner
-from tictactoe_motion.motion_primitives import JointMotion
 
 
 def target():
@@ -87,27 +86,3 @@ def test_absolute_pose_request_is_plan_only_and_uses_tight_orientation():
         pose.position.z=.5
         assert node.planned_target_pose.position.z==.24
     finally:node.cancel_planning();node.destroy_node();rclpy.try_shutdown()
-
-
-def test_named_driver_checks_stop_after_async_fk_before_planning():
-    from simulation_support import SimulationHarness
-    driver=SimulationHarness.__new__(SimulationHarness)
-    driver.node=Mock()
-    stopped=[False]
-    driver.motion_guard=lambda:stopped[0]
-    def fk(name):
-        stopped[0]=True
-        return {},target()
-    driver.named_target=fk
-    driver.joint_motion = JointMotion(driver)
-    with pytest.raises(RuntimeError, match="Sequence cancelled"):driver.named('zero')
-    driver.node.request_joint_plan.assert_not_called()
-
-
-def test_driver_rechecks_stop_before_execution_service():
-    from simulation_support import SimulationHarness
-    driver=SimulationHarness.__new__(SimulationHarness)
-    driver.motion_guard=lambda:True
-    driver.call=Mock()
-    with pytest.raises(RuntimeError):driver.execute()
-    driver.call.assert_not_called()

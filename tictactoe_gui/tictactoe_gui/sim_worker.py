@@ -26,7 +26,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
     from tictactoe_coordinator.game_coordinator import GameCoordinator, THREE_STONE_MODE
     from tictactoe_perception.stable_player_move import StablePlayerMove
     from tictactoe_motion.simulated_board import SimulatedBoard
-    from tictactoe_motion.simulation_driver import SimulationDriver
+    from tictactoe_driver.simulation_driver import SimulationDriver
     from tictactoe_motion.simulation_scene import verify_scene
 
     profile = yaml.safe_load((Path(get_package_share_directory('tictactoe_motion'))/'config/board_sim.yaml').read_text())

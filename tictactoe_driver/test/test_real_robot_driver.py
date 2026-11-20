@@ -1,6 +1,6 @@
 """Hardware-profile gates, without connecting to or moving a robot."""
 import pytest
-from tictactoe_motion.real_robot_driver import require_real_profile
+from tictactoe_driver.real_robot_driver import require_real_profile
 
 NAMES = ['motion_planner', 'move_group', 'piper_ctrl_single_node', 'zenoh_bridge_ros2dds']
 
