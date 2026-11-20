@@ -13,6 +13,7 @@ import requests
 
 from tictactoe_coordinator.game_coordinator import GameCoordinator
 from tictactoe_gui.real_board_perception import RealBoardPerception
+from tictactoe_gui.game_timing import Timeline
 from tictactoe_gui.server import CanvasSession, make_handler
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
 from tictactoe_perception.stable_player_move import StablePlayerMove
@@ -20,6 +21,7 @@ from tictactoe_perception.stable_player_move import StablePlayerMove
 
 def real_game_worker(session, *, url, perception, restore=None):
     """Keep motion serialized while an independent thread supplies live camera frames."""
+    timing = Timeline(session.output)
     def progress(state):
         session.update(message=state['message'], motion_job=state['job'])
 
@@ -35,7 +37,7 @@ def real_game_worker(session, *, url, perception, restore=None):
     while not session.shutdown.is_set():
         try:
             client = Workstation(url, session.output/'motion', cancelled=session.stop.is_set,
-                                 progress=progress)
+                                 progress=progress, timing=timing.emit)
             break
         except requests.RequestException:
             session.update(state='offline', busy=False, message='Workbench disconnected. Showing the saved game and retrying.')
@@ -43,7 +45,13 @@ def real_game_worker(session, *, url, perception, restore=None):
     else:
         return
     actions = RemoteDrawing(client)
-    game = GameCoordinator(actions, session.update, session.stop.is_set, flip=False)
+    def publish(**changes):
+        session.update(**changes)
+        if 'game' in changes:
+            game_state = changes['game']
+            timing.emit('game_state', phase=game_state['phase'], revision=game_state['revision'],
+                        board=game_state['board'])
+    game = GameCoordinator(actions, publish, session.stop.is_set, flip=False)
 
     def camera_loop():
         with requests.Session() as http:
@@ -80,8 +88,11 @@ def real_game_worker(session, *, url, perception, restore=None):
         image, sequence, _ = session.preview_frame()
         if not image or not state.get('camera_fresh') or sequence == gate.last_sequence:
             return None
+        detect_started = time.monotonic()
         cells = perception.detect_cells(image)
         found = gate.observe(sequence, cells)
+        timing.emit('vision_frame', sequence=sequence, seconds=time.monotonic()-detect_started,
+                    consecutive=gate.count, confirmed=found)
         evidence = dict(sequence=sequence,
                         cells={f'{r+1},{c+1}':sorted(m) for (r,c),m in cells.items()},
                         consecutive=gate.count, confirmed=found)
@@ -93,6 +104,7 @@ def real_game_worker(session, *, url, perception, restore=None):
         return found
 
     def register(found, revision):
+        timing.emit('player_confirmed', revision=revision, found=found)
         session.update(message='Three camera frames confirmed. Submitting player move.')
         game.register_observed_move(*found, revision)
         if game.game.outcome:
@@ -140,6 +152,7 @@ def real_game_worker(session, *, url, perception, restore=None):
             try:
                 session.update(state='running')
                 kind, request = job['kind'], job['game_request'] or {}
+                timing.emit('job_begin', job=job['job'], kind=kind)
                 if kind == 'reset':
                     client.command(kind='reset', speed=.1)
                     client.park('zero')
@@ -155,10 +168,12 @@ def real_game_worker(session, *, url, perception, restore=None):
                     mark = game.player_mark
                     center = game.game.cell_center(request['row'], request['col'])
                     session.update(message='Drawing the player mark, then waiting for camera confirmation.')
+                    timing.emit('player_draw_begin', job=job['job'])
                     if mark == 'X':
                         actions.draw_x(center, game.game.cell_size*.55)
                     else:
                         actions.draw_o(center, game.game.cell_size*.25)
+                    timing.emit('player_draw_complete', job=job['job'])
                     deadline = time.monotonic()+45
                     found = None
                     while time.monotonic() < deadline and not session.stop.is_set():
@@ -180,6 +195,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                 state = session.status()
                 (session.output/f'job-{job["job"]}.json').write_text(
                     json.dumps(state, ensure_ascii=False, indent=2))
+                timing.emit('job_complete', job=job['job'], state=state['state'])
                 session.jobs.task_done()
     finally:
         camera_thread.join(timeout=18)

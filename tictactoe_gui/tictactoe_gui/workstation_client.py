@@ -7,7 +7,7 @@ import requests
 
 class Workstation:
     """Use verified workstation jobs and preserve every submitted operation."""
-    def __init__(self, url, output, *, cancelled=lambda: False, progress=lambda state: None):
+    def __init__(self, url, output, *, cancelled=lambda: False, progress=lambda state: None, timing=lambda event, **fields: None):
         self.url = url.rstrip('/') + '/'
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
@@ -18,6 +18,7 @@ class Workstation:
         self.token = config['token']
         self.cancelled = cancelled
         self.progress = progress
+        self.timing = timing
 
     def get(self, route, *, timeout=15):
         r = self.http.get(self.url + 'api/' + route, timeout=timeout)
@@ -67,15 +68,20 @@ class Workstation:
     def command(self, **command):
         if self.cancelled():
             raise RuntimeError('Operation cancelled')
-        self.wait_ready()
+        timing = getattr(self, 'timing', lambda event, **fields: None)
         started = time.monotonic()
+        timing('command_begin', kind=command['kind'])
+        self.wait_ready()
+        timing('preflight_complete', kind=command['kind'])
         response = self.http.post(self.url + ('api/canvas' if command['kind'] == 'canvas' else 'api/command'), json=command,
                                   headers={'Origin': urlsplit(self.url).scheme + '://' + urlsplit(self.url).netloc,
                                            'X-Workbench-Token': self.token}, timeout=20)
         if response.status_code >= 400:
             raise RuntimeError(f'Workstation rejected command: {response.text}')
         job = response.json()['job']
+        timing('command_accepted', job=job, kind=command['kind'])
         print('JOB', job, command['kind'], flush=True)
+        previous_stage = None
         deadline = time.monotonic() + 300
         while time.monotonic() < deadline:
             try:
@@ -89,6 +95,10 @@ class Workstation:
                 time.sleep(.5)
                 continue
             self.progress(state)
+            stage = state.get('message')
+            if stage != previous_stage:
+                timing('motion_stage', job=job, kind=command['kind'], stage=stage)
+                previous_stage = stage
             if self.cancelled():
                 self.stop()
                 raise RuntimeError('Stop requested; check workstation settling state')
@@ -108,6 +118,7 @@ class Workstation:
                     raise RuntimeError(state['message'])
                 if command['kind'] == 'preset' and not state.get('plan'):
                     raise RuntimeError(state['message'])
+                timing('command_complete', job=job, kind=command['kind'], seconds=record['seconds'])
                 print('DONE', job, round(record['seconds'], 2), state['message'], flush=True)
                 return state
             time.sleep(.5)
@@ -120,10 +131,12 @@ class Workstation:
         response.raise_for_status()
 
     def park(self, name='clear'):
+        getattr(self, 'timing', lambda *a, **k: None)('park_begin', name=name)
         state = self.command(kind='preset', name=name, speed=1.)
         if not state.get('plan'):
             raise RuntimeError('No verified preset plan')
         self.command(kind='execute')
+        getattr(self, 'timing', lambda *a, **k: None)('park_complete', name=name)
 
     def frame(self, name):
         state = self.get('status')
