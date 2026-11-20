@@ -264,3 +264,57 @@ against the camera after connecting. While the workstation is unavailable,
 the page labels its retained photo and detection overlay as saved images and
 disables movement. Update the workstation URL on service launch if the cloud
 session changes. Startup and restoring the completed display issue no motion.
+
+### Cloud-only real-robot GUIs
+
+All three GUIs and YOLO inference can run inside the rosject. Local Python,
+WSL servers and a local GPU are not required by this deployment.
+
+The robot bridge, camera and the real MoveGroup must already be running.
+Install the additional Python packages into the repository-local directory,
+not the system Python environment:
+
+```bash
+cd ~/ros2_ws/src/play_tictactoe
+python3 -m pip install --target .cloud-python --no-deps \
+  -r tictactoe_gui/config/cloud-requirements.txt
+cd ~/ros2_ws
+source /opt/ros/humble/setup.bash
+colcon build --base-paths src/play_tictactoe --packages-up-to tictactoe_gui
+source install/setup.bash
+ros2 launch tictactoe_gui robot_games_real.launch.py \
+  public_url:="$(webpage_address)"
+```
+
+This reuses the cloud's installed CPU PyTorch and OpenCV. NumPy 1.26 is pinned
+for the ROS Humble cv_bridge binary; the isolated directory avoids changing
+other cloud applications. The launch applies this directory to its children.
+
+Open the URL printed by `webpage_address`:
+
+- Root: calibration workbench.
+- `canvas`: free drawing canvas.
+- `game/`: real-robot Tic-Tac-Toe with camera-confirmed player moves.
+
+One gateway listens on `0.0.0.0:7000`; internal workbench and game servers use
+loopback ports 8765 and 8775. Do not start separate copies on those ports.
+The launch preserves real localization records under `data/localization_real`
+and stores game evidence under `data/cloud_gui`. Startup does not move the arm.
+YOLO warms up before the game reports readiness, using CPU with two threads.
+The bundled `models/xo_real.pt` supplies the validated real-camera model.
+
+`grid_points` accepts a JSON file containing four internal 3x3 grid intersections
+in raw-image pixels, ordered top-left, top-right, bottom-right, bottom-left.
+Verify alignment after any camera or board change; the bundled calibration is
+an existing real setup reference, not automatic calibration.
+
+```bash
+ros2 launch tictactoe_gui robot_games_real.launch.py \
+  public_url:="$(webpage_address)" grid_points:=/absolute/path/grid_points.json
+```
+
+Browser resume refreshes state, camera frames and session tokens without
+replaying motion requests. A frozen or disconnected page cannot render live
+updates; the cloud worker continues the accepted job. On returning, wait for
+synchronization before issuing another command. Real feedback-loss and stop
+checks remain active independently of page polling.
