@@ -307,13 +307,37 @@ async function act(path, data) {
   }
 }
 
+let pollTimer;
+let polling = false;
 async function poll() {
-  if (!sending) {
-    try { await refresh(); } catch { online = false; token = undefined; }
-    render();
+  if (polling) return;
+  clearTimeout(pollTimer);
+  polling = true;
+  try {
+    if (!sending) {
+      try { await refresh(); } catch { online = false; token = undefined; }
+      render();
+    }
+  } finally {
+    polling = false;
+    pollTimer = setTimeout(poll, document.hidden ? 1500 : 350);
   }
-  setTimeout(poll, 350);
 }
+function resumePage() {
+  if (document.hidden) return;
+  // Reconcile server state after a frozen tab; never replay a motion request.
+  token = undefined;
+  frame = undefined;
+  renderedPerception = undefined;
+  perceptionRequest?.abort();
+  clearTimeout(pollTimer);
+  void poll().then(() => updatePerception());
+}
+document.addEventListener('visibilitychange', resumePage);
+document.addEventListener('resume', resumePage);
+window.addEventListener('pageshow', resumePage);
+window.addEventListener('focus', resumePage);
+window.addEventListener('online', resumePage);
 perception.addEventListener('toggle', resetPerception);
 perceptionView.addEventListener('change', resetPerception);
 setInterval(updatePerception, 850);

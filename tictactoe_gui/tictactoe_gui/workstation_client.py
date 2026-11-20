@@ -19,17 +19,55 @@ class Workstation:
         self.cancelled = cancelled
         self.progress = progress
 
-    def get(self, route):
-        r = self.http.get(self.url + 'api/' + route, timeout=15)
+    def get(self, route, *, timeout=15):
+        r = self.http.get(self.url + 'api/' + route, timeout=timeout)
         r.raise_for_status()
         return r.json()
+
+    def diagnostic(self, stage, state=None, error=None):
+        """Record readiness evidence without credentials or motion payloads."""
+        record = dict(time=time.time(), stage=stage)
+        if state is not None:
+            record.update({key: state.get(key) for key in
+                           ('state', 'busy', 'fresh', 'job', 'message', 'last_stop')})
+        if error is not None:
+            record['error'] = str(error)
+        with (self.output/'connection_events.jsonl').open('a') as stream:
+            stream.write(json.dumps(record, ensure_ascii=False)+'\n')
+
+    def wait_ready(self, timeout=5.0):
+        """Wait only for transient stale feedback before submitting a new command."""
+        deadline = time.monotonic()+timeout
+        initial_job = None
+        while True:
+            if self.cancelled():
+                raise RuntimeError('Operation cancelled before submission')
+            try:
+                state = self.get('status', timeout=min(2.0, max(.1, deadline-time.monotonic())))
+            except (requests.Timeout, requests.ConnectionError) as error:
+                self.diagnostic('preflight_status_unavailable', error=error)
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Workstation status unavailable; no command sent') from error
+                time.sleep(.25)
+                continue
+            if initial_job is None:
+                initial_job = state['job']
+            if state['busy'] or state['state'] != 'ready' or state['job'] != initial_job:
+                self.diagnostic('preflight_rejected', state)
+                raise RuntimeError('Workstation not ready: '+json.dumps(
+                    {key:state.get(key) for key in ('state','busy','fresh','job','message')}))
+            if state['fresh']:
+                return state
+            self.diagnostic('waiting_for_fresh_feedback', state)
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Feedback remained stale before submission; no command sent')
+            self.progress(dict(state, message='Waiting for fresh robot feedback before submission'))
+            time.sleep(.25)
 
     def command(self, **command):
         if self.cancelled():
             raise RuntimeError('Operation cancelled')
-        state = self.get('status')
-        if state['busy'] or not state['fresh'] or state['state'] != 'ready':
-            raise RuntimeError('Workstation not ready: ' + state['message'])
+        self.wait_ready()
         started = time.monotonic()
         response = self.http.post(self.url + ('api/canvas' if command['kind'] == 'canvas' else 'api/command'), json=command,
                                   headers={'Origin': urlsplit(self.url).scheme + '://' + urlsplit(self.url).netloc,
@@ -40,7 +78,16 @@ class Workstation:
         print('JOB', job, command['kind'], flush=True)
         deadline = time.monotonic() + 300
         while time.monotonic() < deadline:
-            state = self.get('status')
+            try:
+                state = self.get('status')
+            except (requests.Timeout, requests.ConnectionError) as error:
+                # The job was accepted: retry only status reads, never the POST.
+                self.diagnostic('accepted_job_status_unavailable', error=error)
+                if self.cancelled():
+                    self.stop()
+                    raise RuntimeError('Stop requested while status was unavailable')
+                time.sleep(.5)
+                continue
             self.progress(state)
             if self.cancelled():
                 self.stop()

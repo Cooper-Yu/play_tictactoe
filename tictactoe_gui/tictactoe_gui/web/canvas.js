@@ -95,3 +95,15 @@ async function poll(){
 }
 async function start(){try{const config=await jsonRequest('api/config');token=config.token;configure(config.canvas);}catch(e){localMessage=e.message;}await poll();setInterval(()=>void poll(),450);}
 start();
+
+function resumeCanvas() {
+ if(document.hidden)return;
+ // Preserve local strokes and reconcile status; do not resend the drawing.
+ token=null;imageSequence=undefined;
+ void poll();
+}
+document.addEventListener('visibilitychange',resumeCanvas);
+document.addEventListener('resume',resumeCanvas);
+window.addEventListener('pageshow',resumeCanvas);
+window.addEventListener('focus',resumeCanvas);
+window.addEventListener('online',resumeCanvas);

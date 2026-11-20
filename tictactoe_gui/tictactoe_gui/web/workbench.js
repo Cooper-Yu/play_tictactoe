@@ -182,3 +182,21 @@ for(const id of ['ink-strength','ink-tolerance']) $(id).oninput=()=>{$(id+'-valu
 updateEnhancementControls();
 async function start(){try{const response=await fetch('api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('Workbench connection failed, Refresh the page');}}
 start();
+
+let resuming=false;
+async function resumeWorkbench(){
+ if(document.hidden||resuming)return;
+ resuming=true;
+ try{
+  const response=await fetch('api/config',{signal:AbortSignal.timeout(4000)});
+  if(!response.ok)throw Error('Could not reconnect to the workbench');
+  token=(await response.json()).token;
+  await poll();await refreshImages();
+ }catch(error){toast(error.message);}
+ finally{resuming=false;}
+}
+document.addEventListener('visibilitychange',resumeWorkbench);
+document.addEventListener('resume',resumeWorkbench);
+window.addEventListener('pageshow',resumeWorkbench);
+window.addEventListener('focus',resumeWorkbench);
+window.addEventListener('online',resumeWorkbench);
