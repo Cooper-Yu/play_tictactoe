@@ -2,7 +2,7 @@
 
 import pytest
 
-from tictactoe_motion.decision import choose_move
+from tictactoe_game.decision import choose_move
 
 
 def board_with(x_cells, o_cells):

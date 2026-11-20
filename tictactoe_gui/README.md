@@ -1,12 +1,16 @@
 # Robot localization workstation and tablet canvas
 
+This package owns the web pages and launch entry points for the localization
+workstation, freehand canvas, and game. Game turns are owned by the
+`tictactoe_coordinator` package.
+
 The localization workstation is the current main GUI. It follows the original
 light/teal calibration reference: camera overview and enhanced ROI above,
 base-frame jogging, measured pose and named records below, without page tabs.
 
 ```bash
 cd ~/ros2_ws
-colcon build --packages-select tictactoe_gui --symlink-install
+colcon build --packages-up-to tictactoe_gui --symlink-install
 source install/setup.bash
 export ROS_DOMAIN_ID=186 ROS_LOCALHOST_ONLY=1
 ros2 launch tictactoe_gui localization_sim.launch.py
@@ -63,7 +67,7 @@ Choose an illustration or draw with a mouse/stylus, then press **执行绘图**.
 
 ```bash
 cd ~/ros2_ws
-colcon build --packages-select tictactoe_motion tictactoe_gui --symlink-install
+colcon build --packages-up-to tictactoe_gui --symlink-install
 source install/setup.bash
 export ROS_DOMAIN_ID=186 ROS_LOCALHOST_ONLY=1
 export GAZEBO_MASTER_URI=http://127.0.0.1:11605

@@ -3,7 +3,7 @@ import math
 from unittest.mock import Mock
 import pytest
 from test_drawing_actions import actions
-from tictactoe_motion.gomoku import Gomoku
+from tictactoe_game.gomoku import Gomoku
 
 
 def game(size=9):

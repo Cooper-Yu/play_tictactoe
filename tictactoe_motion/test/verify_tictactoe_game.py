@@ -15,7 +15,7 @@ from simulation_support import SimulationHarness,write_report
 from board_scene_support import verify_scene
 from tictactoe_motion.board_canvas import BoardCanvas
 from tictactoe_motion.drawing_actions import DrawingActions
-from tictactoe_motion.tic_tac_toe import TicTacToe
+from tictactoe_game.tic_tac_toe import TicTacToe
 from tictactoe_motion.simulated_board import SimulatedBoard
 
 

@@ -2,7 +2,7 @@
 import argparse
 from functools import partial
 
-from tictactoe_gui.game_coordinator import WIN_LENGTHS
+from tictactoe_coordinator.game_coordinator import WIN_LENGTHS
 import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files

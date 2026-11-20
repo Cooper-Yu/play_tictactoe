@@ -2,7 +2,7 @@
 
 import pytest
 
-from tictactoe_gui.game_coordinator import GameCoordinator
+from tictactoe_coordinator.game_coordinator import GameCoordinator
 
 
 class Actions:
@@ -65,9 +65,9 @@ def test_failed_ai_stroke_keeps_verified_human_move_and_pauses():
 
 
 def test_score_match_swaps_marks_and_resolves_an_exact_tie(monkeypatch):
-    from tictactoe_motion.score_tictactoe import score
+    from tictactoe_game.score_tictactoe import score
 
-    monkeypatch.setattr("tictactoe_gui.game_coordinator.secrets.choice", lambda sides: sides[0])
+    monkeypatch.setattr("tictactoe_coordinator.game_coordinator.secrets.choice", lambda sides: sides[0])
     snapshots = []
     actions = Actions()
     coordinator = GameCoordinator(actions, lambda **data: snapshots.append(data), lambda: False)
@@ -96,7 +96,7 @@ def test_score_match_swaps_marks_and_resolves_an_exact_tie(monkeypatch):
 
 
 def test_score_round_continues_after_a_three_in_a_row():
-    from tictactoe_motion.score_tictactoe import ScoreTicTacToe
+    from tictactoe_game.score_tictactoe import ScoreTicTacToe
 
     game = ScoreTicTacToe(Actions(), .14, .189)
     game.start()
@@ -151,7 +151,7 @@ def test_fixed_three_stone_opening_respects_mark_and_o_turn(monkeypatch, mark, f
         assert options == {"randomize_four_ties": True}
         return 0, 0
 
-    monkeypatch.setattr("tictactoe_motion.grid_game.GridGame.suggest_move", suggest)
+    monkeypatch.setattr("tictactoe_game.grid_game.GridGame.suggest_move", suggest)
     coordinator.start(9, 1, mode="four-three-stone", mark=mark)
     board = snapshots[-1]["game"]
     assert (board["turn"], board["human"], board["first"]) == (mark, mark, first)

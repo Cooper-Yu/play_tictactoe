@@ -1,5 +1,14 @@
 # Play TicTacToe
 
+## Package layout
+
+- `tictactoe_game` defines board rules, scoring, and move selection.
+- `tictactoe_coordinator` coordinates turns and dispatches drawing through the provided actions.
+- `tictactoe_motion` handles MoveIt, feedback, pose records, and drawing.
+- `tictactoe_perception` handles images and stable player-move confirmation.
+- `tictactoe_gui` serves the workstation, freehand canvas, and game pages.
+
+
 
 ### Simultaneous XY planning
 

@@ -6,7 +6,7 @@ import pytest
 import yaml
 from tictactoe_motion.board_canvas import BoardCanvas
 from tictactoe_motion.drawing_actions import DrawingActions
-from tictactoe_motion.tic_tac_toe import TicTacToe
+from tictactoe_game.tic_tac_toe import TicTacToe
 
 
 def actions():return DrawingActions(BoardCanvas(yaml.safe_load((Path(__file__).parents[1]/'config/board_sim.yaml').read_text())))

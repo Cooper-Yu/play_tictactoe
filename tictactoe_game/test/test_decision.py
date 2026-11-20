@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from tictactoe_motion.decision import choose_move
+from tictactoe_game.decision import choose_move
 
 
 @pytest.mark.parametrize(("board", "player", "expected"), [
