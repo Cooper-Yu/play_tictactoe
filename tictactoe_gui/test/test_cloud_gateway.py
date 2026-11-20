@@ -55,3 +55,47 @@ def test_cloud_gateway_keeps_origin_token_and_readiness_checks(tmp_path):
 def test_gateway_rejects_unexpected_public_url(url):
     with pytest.raises(ValueError):
         make_gateway(url)
+
+def test_cloud_game_namespace_keeps_workbench_and_game_separate(tmp_path):
+    from tictactoe_gui.server import CanvasSession, make_handler as game_handler
+    work = WorkbenchSession(tmp_path/'work', 'real')
+    game = CanvasSession(tmp_path/'game', None, environment='real', vision_available=True)
+    game.update(state='ready')
+    game.workstation_url = 'http://127.0.0.1:8765/'
+    game.width_mm, game.height_mm = 140, 189
+    backend = ThreadingHTTPServer(('127.0.0.1', 0), make_handler(work))
+    games = ThreadingHTTPServer(('127.0.0.1', 0), game_handler(game))
+    origin = 'https://test.robotigniteacademy.com'
+    gateway = ThreadingHTTPServer(('127.0.0.1', 0),
+        make_gateway(origin+'/slot/webpage/', backend.server_port, games.server_port))
+    servers = [backend, games, gateway]
+    threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
+    for thread in threads:
+        thread.start()
+    base = f'http://127.0.0.1:{gateway.server_port}'
+    try:
+        with urlopen(base+'/game/') as response:
+            assert b'Robot board games' in response.read()
+        with urlopen(base+'/game/game.js') as response:
+            assert b'gameMount' in response.read()
+        with urlopen(base+'/game/api/config') as response:
+            config = json.load(response)
+            assert config['workstation_url'] == origin+'/slot/webpage/'
+        with urlopen(base+'/api/config') as response:
+            assert json.load(response)['token'] == work.token
+        game.update(busy=True)
+        headers = {'Origin':origin, 'X-Canvas-Token':game.token}
+        with urlopen(Request(base+'/game/api/stop', data=b'{}', headers=headers)) as response:
+            assert response.status == 202
+        assert game.stop.is_set()
+        assert not work.stop.is_set()
+        with pytest.raises(HTTPError) as error:
+            urlopen(Request(base+'/game/api/stop', data=b'{}',
+                    headers={'Origin':'https://evil.invalid', 'X-Canvas-Token':game.token}))
+        assert error.value.code == 403
+    finally:
+        for server in servers:
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join()

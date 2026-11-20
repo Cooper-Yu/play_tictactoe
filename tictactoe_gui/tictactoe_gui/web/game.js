@@ -1,5 +1,8 @@
 'use strict';
 const get = id => document.getElementById(id);
+const gameMount = location.pathname.endsWith('/game/') ? location.pathname.slice(0, -1) : '';
+const gameURL = path => gameMount + path;
+const gameFetch = (path, options) => fetch(gameURL(path), options);
 const board = get('board');
 const winLine = get('win-line');
 let winCells = [];
@@ -49,7 +52,7 @@ async function updatePerception() {
   const request = new AbortController();
   perceptionRequest = request;
   try {
-    const response = await fetch('/api/game/perception?view=' + view, {
+    const response = await gameFetch('/api/game/perception?view=' + view, {
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(12000)])
     });
     if (!response.ok) throw Error((await response.json()).error);
@@ -242,7 +245,7 @@ function render() {
         get('preview').querySelector('p').hidden = true;
       };
       nextImage.onerror = () => { if (frame === cameraUrl) frame = undefined; };
-      nextImage.src = cameraUrl;
+      nextImage.src = gameURL(cameraUrl);
     } else {
       image.hidden = true;
       get('preview').querySelector('p').hidden = false;
@@ -252,7 +255,7 @@ function render() {
 
 async function refresh() {
   if (!token) {
-    const response = await fetch('/api/config', {signal: AbortSignal.timeout(2500)});
+    const response = await gameFetch('/api/config', {signal: AbortSignal.timeout(2500)});
     if (!response.ok) throw Error('Could not read configuration');
     const config = await response.json();
     token = config.token;
@@ -281,7 +284,7 @@ async function refresh() {
       document.querySelector('input[value="four"]').checked = true;
     }
   }
-  const response = await fetch('/api/status', {signal: AbortSignal.timeout(2500)});
+  const response = await gameFetch('/api/status', {signal: AbortSignal.timeout(2500)});
   if (!response.ok) throw Error('Could not read status');
   state = await response.json();
   online = true;
@@ -293,7 +296,7 @@ async function act(path, data) {
   notice = '';
   render();
   try {
-    const response = await fetch(path, {method: 'POST',
+    const response = await gameFetch(path, {method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Canvas-Token': token},
       body: JSON.stringify(data), signal: AbortSignal.timeout(3500)});
     if (!response.ok) throw Error((await response.json()).error || 'Request failed');

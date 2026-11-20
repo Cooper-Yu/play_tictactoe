@@ -190,7 +190,13 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--restore-game')
     parser.add_argument('--port', type=int, default=8775)
+    parser.add_argument('--cpu-threads', type=int, default=2)
     args = parser.parse_args()
+    if args.device == 'cpu':
+        if args.cpu_threads < 1:
+            raise ValueError('CPU threads must be positive')
+        import torch
+        torch.set_num_threads(args.cpu_threads)
     points = json.loads(Path(args.grid_points).read_text())
     preview = RealBoardPerception(args.weights, points, device=args.device)
     if not preview.weights.is_file():

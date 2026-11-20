@@ -1,11 +1,12 @@
 """The Construct webpage gateway; retain the loopback ROS workstation backend."""
 import argparse
+import json
 from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 
-def make_gateway(public_url, upstream_port=8765):
+def make_gateway(public_url, upstream_port=8765, game_port=None):
     """! @brief Forward only workstation routes through one explicit HTTPS origin."""
     parsed = urlsplit(public_url)
     if (parsed.scheme != 'https' or not parsed.hostname
@@ -24,9 +25,26 @@ def make_gateway(public_url, upstream_port=8765):
             pass
 
         def forward(self):
-            path = urlsplit(self.path).path
-            if path not in routes or (self.command == 'POST' and path not in
-                                      ('/api/command', '/api/stop', '/api/canvas')):
+            parsed_path = urlsplit(self.path)
+            path = parsed_path.path
+            if path == '/game' and game_port is not None:
+                self.send_response(308)
+                self.send_header('Location', 'game/')
+                self.end_headers()
+                return
+            is_game = game_port is not None and path.startswith('/game/')
+            target_port = game_port if is_game else upstream_port
+            if is_game:
+                path = path[len('/game'):]
+                if path == '/':
+                    path = '/game'
+            game_routes = {'/game', '/game.js', '/game.css', '/api/config', '/api/status',
+                           '/api/game/camera', '/api/game/perception', '/api/game/frame',
+                           '/api/game/start', '/api/game/simulate-player', '/api/reset', '/api/stop'}
+            allowed = game_routes if is_game else routes
+            posts = ('/api/game/start', '/api/game/simulate-player', '/api/reset', '/api/stop') if is_game else (
+                '/api/command', '/api/stop', '/api/canvas')
+            if path not in allowed or (self.command == 'POST' and path not in posts):
                 self.send_error(404)
                 return
             body = None
@@ -43,14 +61,20 @@ def make_gateway(public_url, upstream_port=8765):
                     self.send_error(400)
                     return
                 body = self.rfile.read(size)
-                headers = {'Origin': f'http://127.0.0.1:{upstream_port}',
+                headers = {'Origin': f'http://127.0.0.1:{target_port}',
                            'Content-Type': 'application/json',
-                           'X-Workbench-Token': self.headers.get('X-Workbench-Token', '')}
-            connection = HTTPConnection('127.0.0.1', upstream_port, timeout=5)
+                           'X-Workbench-Token': self.headers.get('X-Workbench-Token', ''),
+                           'X-Canvas-Token': self.headers.get('X-Canvas-Token', '')}
+            connection = HTTPConnection('127.0.0.1', target_port, timeout=20 if is_game else 5)
             try:
-                connection.request(self.command, self.path, body=body, headers=headers)
+                target = path + ('?' + parsed_path.query if parsed_path.query else '')
+                connection.request(self.command, target, body=body, headers=headers)
                 response = connection.getresponse()
                 data = response.read()
+                if is_game and path == '/api/config' and response.status == 200:
+                    config = json.loads(data)
+                    config['workstation_url'] = public_url
+                    data = json.dumps(config).encode()
                 self.send_response(response.status)
                 for name in ('Content-Type', 'Content-Security-Policy',
                              'X-Content-Type-Options'):
@@ -76,9 +100,10 @@ def main():
     parser.add_argument('--public-url', required=True)
     parser.add_argument('--port', type=int, default=7000)
     parser.add_argument('--upstream-port', type=int, default=8765)
+    parser.add_argument('--game-port', type=int)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('0.0.0.0', args.port),
-                                 make_gateway(args.public_url, args.upstream_port))
+                                 make_gateway(args.public_url, args.upstream_port, args.game_port))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

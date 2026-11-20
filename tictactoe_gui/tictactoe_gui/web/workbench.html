@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Robot calibration workbench</title><link rel="stylesheet" href="workbench.css"><script src="workbench.js" defer></script></head>
 <body><main>
-<header><span class="brand-icon">⌖</span><div><h1>Robot calibration workbench</h1><p>Final Project <span>/</span> Blackboard Calibration</p></div><a href="canvas">Drawing canvas</a><span id="connection" class="badge">Connecting</span></header>
+<header><span class="brand-icon">⌖</span><div><h1>Robot calibration workbench</h1><p>Final Project <span>/</span> Blackboard Calibration</p></div><a href="canvas">Drawing canvas</a><a href="game/">Board games</a><span id="connection" class="badge">Connecting</span></header>
 <section class="source"><label for="topic">Camera topic</label><select id="topic" aria-label="Camera topic"></select><button id="switch-camera">Switch</button><strong id="resolution">Waiting for image</strong><small>Camera and arm control use independent connections</small></section>
 <div class="workspace">
 <section class="panel vision"><div class="heading"><h2>⌾　Camera overview</h2><small>Drag to select a region</small></div><div class="view" id="raw-wrap"><canvas id="raw" width="424" height="240" aria-label="Camera overview, Drag to select a region"></canvas><span id="camera-badge" class="image-badge">Waiting for live camera</span></div><div class="caption"><span id="roi-label">Selection: Full image</span><button id="full-image" class="text-button">Use full camera image</button></div><p id="camera-info" class="hint"></p></section>
