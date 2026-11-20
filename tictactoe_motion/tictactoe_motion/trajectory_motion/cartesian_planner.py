@@ -172,7 +172,11 @@ class CartesianPlanner:
                 if (fixed_height and abs(pose.position.z-start.position.z) > 1e-9) or orientation_error(pose.orientation, start.orientation) > 1e-6:
                     raise ValueError('Path violates the requested fixed height/orientation')
             length = sum(math.dist(xyz(a), xyz(b)) for a, b in zip(poses, poses[1:]))
-            if not 0 < length <= self.settings['cartesian_max_length']:
+            scoped_limit = getattr(self, 'canvas_max_length', None)
+            limit = self.settings['cartesian_max_length']
+            if scoped_limit is not None:
+                limit = max(limit, min(scoped_limit, .5))
+            if not 0 < length <= limit:
                 raise ValueError('Path length exceeds configured range')
             speed = self.settings['cartesian_speed'] if speed is None else speed
             if not math.isfinite(speed) or speed <= 0:

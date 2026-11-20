@@ -15,7 +15,7 @@ def continuous_line(parts, width, height):
     dx = (points[-1][0]-x0)*width
     dy = (points[-1][1]-y0)*height
     length = math.hypot(dx, dy)
-    if not .06 < length <= .120000001 or len(points) > 500:
+    if not .06 < length <= .250000001 or len(points) > 500:
         return None
     previous = 0.0
     for u, v in points:
@@ -34,7 +34,7 @@ def continuous_closed_curve(parts, width, height):
     points = parts[0] + [p for part in parts[1:] for p in part[1:]]
     metric = [(u*width, v*height) for u,v in points]
     length = sum(math.dist(a,b) for a,b in zip(metric, metric[1:]))
-    if not .06 < length <= .120000001 or len(points) > 500:
+    if not .06 < length <= .500000001 or len(points) > 500:
         return None
     if math.dist(metric[0], metric[-1]) > .0005:
         return None

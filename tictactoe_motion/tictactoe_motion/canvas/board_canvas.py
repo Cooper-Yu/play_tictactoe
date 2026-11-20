@@ -66,16 +66,18 @@ class BoardCanvas:
             return (self.x1-u*(self.x1-self.x0), self.y0+v*(self.y1-self.y0), self.z)
         return (self.x0+u*(self.x1-self.x0), self.y1-v*(self.y1-self.y0), self.z)
 
-    def stroke(self,points,snap=True):
+    def stroke(self,points,snap=True, *, max_length=.3):
         """! @brief Quantize and connect one stroke; reject oversized paths before motion."""
+        if not math.isfinite(max_length) or not 0 < max_length <= .5:
+            raise ValueError('Stroke length limit must be in (0, 0.5] m')
         if not 2<=len(points)<=500:raise ValueError('Stroke requires 2..500 input points')
         indices=[self.index(*p) for p in points]
         if not snap:
             output=[self.metric_point(u, v) for u,v in points]
             if any(math.dist(a,b)==0 for a,b in zip(output,output[1:])):
                 raise ValueError('Duplicate adjacent path points')
-            if sum(math.dist(a,b) for a,b in zip(output,output[1:]))>.3:
-                raise ValueError('Stroke exceeds 0.3 m')
+            if sum(math.dist(a,b) for a,b in zip(output,output[1:]))>max_length:
+                raise ValueError(f'Stroke exceeds {max_length:g} m')
             return output
         result=[indices[0]]
         for a,b in zip(indices,indices[1:]):
@@ -86,6 +88,6 @@ class BoardCanvas:
                 if len(result)>500:raise ValueError('Quantized stroke exceeds 500 waypoints; split at pen-up boundaries')
         if len(result)<2:raise ValueError('Stroke collapses to a single grid node')
         output=[self.point(*node) for node in result]
-        if sum(math.dist(a,b) for a,b in zip(output,output[1:]))>.3:
-            raise ValueError('Stroke exceeds 0.3 m; split at pen-up boundaries')
+        if sum(math.dist(a,b) for a,b in zip(output,output[1:]))>max_length:
+            raise ValueError(f'Stroke exceeds {max_length:g} m; split at pen-up boundaries')
         return output

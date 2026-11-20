@@ -18,8 +18,9 @@ class CanvasDrawing(StrokeDrawing):
                 or abs(upper_z-depth-canvas.z) > 1e-9):
             raise ValueError('Real drawing heights must match the calibrated board profile')
         if not 1<=len(strokes)<=32:raise ValueError('Require 1..32 separate strokes')
-        self.paths=[canvas.stroke(points,snap=snap) for points in strokes]
-        self.fallback = {i: [canvas.stroke(points, snap=snap) for points in parts]
+        length_options = {'max_length': .5} if canvas.environment == 'real' and transfer_z is not None else {}
+        self.paths=[canvas.stroke(points,snap=snap, **length_options) for points in strokes]
+        self.fallback = {i: [canvas.stroke(points, snap=snap, **length_options) for points in parts]
                          for i, parts in (fallback or {}).items()}
         self.upper_z=upper_z
         self.transfer_z = transfer_z
@@ -35,6 +36,8 @@ class CanvasDrawing(StrokeDrawing):
         if self.transfer_z is None:
             return self._run(driver, cancelled, on_stage)
         planner = driver.node.cartesian_planner
+        previous_limit = getattr(planner, 'canvas_max_length', None)
+        planner.canvas_max_length = .5
         requested = {key: driver.node.get_parameter(key).value
                      for key in ('velocity_scaling', 'acceleration_scaling')}
 
@@ -63,6 +66,7 @@ class CanvasDrawing(StrokeDrawing):
             return stages
         finally:
             planner.canvas_native_timing = False
+            planner.canvas_max_length = previous_limit
             driver.parameters(**requested)
 
     @staticmethod

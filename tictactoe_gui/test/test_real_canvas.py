@@ -48,7 +48,7 @@ def test_all_geometry_checked_before_driver_is_used(monkeypatch):
             if cancelled(): raise RuntimeError('cancelled')
             on_stage('1_draw'); self.results=[{'passed':True}]; return self.results
     monkeypatch.setattr(module, 'CanvasDrawing', Batch)
-    strokes=[[[0,i/32],[1,i/32]] for i in range(32)]
+    strokes=[[[0,i/32],[1,i/32],[0,i/32]] for i in range(32)]
     action=CanvasAction(board(),strokes)
     assert len(created)>1 and all(len(batch)<=32 for batch in created)
     progress=[]
@@ -117,7 +117,7 @@ def test_shared_canvas_http_large_payload_and_auth(tmp_path,gateway):
 def test_canvas_rejects_invalid_input(data):
     with pytest.raises(ValueError):validate_command(dict(data,kind='canvas'),'real')
 
-@pytest.mark.parametrize('length,candidate', [(.085, True), (.120, True), (.130, False)])
+@pytest.mark.parametrize('length,candidate', [(.085, True), (.120, True), (.130, True)])
 def test_long_straight_source_preserves_segmented_fallback(length, candidate):
     canvas = board()
     half = length/(2*(canvas.x1-canvas.x0-.002))
@@ -221,8 +221,8 @@ def test_small_closed_circle_preserves_one_stroke_with_preflight_fallback():
 def test_long_or_open_curves_keep_lifted_segments():
     import math
     from tictactoe_gui.canvas_action import continuous_closed_curve
-    circle = [[.5+.025*math.cos(t*2*math.pi/128),
-               .5+.025*math.sin(t*2*math.pi/128)] for t in range(129)]
+    circle = [[.5+.09*math.cos(t*2*math.pi/128),
+               .5+.09*math.sin(t*2*math.pi/128)] for t in range(129)]
     assert continuous_closed_curve([circle[:65],circle[64:]],1,1) is None
     circle = [[.5+.011*math.cos(t*2*math.pi/128),
                .5+.011*math.sin(t*2*math.pi/128)] for t in range(120)]
@@ -246,3 +246,22 @@ def test_transfer_stages_honor_requested_speed_and_restore_on_failure(monkeypatc
     with pytest.raises(RuntimeError,match='feedback stale'):d.run(driver)
     assert all(c==dict(velocity_scaling=.4,acceleration_scaling=.3) for c in calls)
     assert not driver.node.cartesian_planner.canvas_native_timing
+
+@pytest.mark.parametrize('axis,length', [('x',.134),('y',.173)])
+def test_full_board_line_is_one_candidate_with_segmented_backup(axis,length):
+    c=board(); usable=(c.x1-c.x0-.002) if axis=='x' else (c.y1-c.y0-.002)
+    half=length/(2*usable)
+    pts=[[[.5-half,.5],[.5+half,.5]]] if axis=='x' else [[[.5,.5-half],[.5,.5+half]]]
+    a=CanvasAction(c,pts)
+    assert len(a.prepared)==1
+    assert len(a.drawings[0].fallback[1])>=3
+
+
+def test_120mm_circle_remains_closed_and_has_segmented_backup():
+    import math
+    c=board();rx=.06/(c.x1-c.x0-.002);ry=.06/(c.y1-c.y0-.002)
+    pts=[[[.5+rx*math.cos(t*2*math.pi/256),.5+ry*math.sin(t*2*math.pi/256)] for t in range(257)]]
+    a=CanvasAction(c,pts)
+    assert len(a.prepared)==1
+    assert len(a.drawings[0].fallback[1])>=6
+    assert a.prepared[0]['points'][0]==pytest.approx(a.prepared[0]['points'][-1])
