@@ -30,10 +30,11 @@ class Workstation:
         if state['busy'] or not state['fresh'] or state['state'] != 'ready':
             raise RuntimeError('Workstation not ready: ' + state['message'])
         started = time.monotonic()
-        response = self.http.post(self.url + 'api/command', json=command,
+        response = self.http.post(self.url + ('api/canvas' if command['kind'] == 'canvas' else 'api/command'), json=command,
                                   headers={'Origin': urlsplit(self.url).scheme + '://' + urlsplit(self.url).netloc,
                                            'X-Workbench-Token': self.token}, timeout=20)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise RuntimeError(f'Workstation rejected command: {response.text}')
         job = response.json()['job']
         print('JOB', job, command['kind'], flush=True)
         deadline = time.monotonic() + 300
@@ -45,6 +46,11 @@ class Workstation:
                 record = dict(command=command, seconds=time.monotonic()-started, state=state)
                 (self.output/f'job-{job}.json').write_text(json.dumps(record, ensure_ascii=False, indent=2))
                 if state['state'] != 'ready' or state.get('last_stop', {}).get('job') == job:
+                    raise RuntimeError(state['message'])
+                expected = {'canvas': '绘图运动完成，已抬笔；请检查实际笔迹',
+                            'preset': '操作完成', 'execute': '操作完成',
+                            'reset': 'Reset 按键动作完成，已回悬空点；请确认清屏'}
+                if state['message'] != expected[command['kind']]:
                     raise RuntimeError(state['message'])
                 if command['kind'] == 'canvas' and not state.get('drawing_result', {}).get('motion_completed'):
                     raise RuntimeError(state['message'])
@@ -78,6 +84,7 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--prepare', action='store_true')
     parser.add_argument('--play', action='store_true')
+    parser.add_argument('--resume-one-x', action='store_true')
     parser.add_argument('--weights')
     parser.add_argument('--grid-points', help='JSON file with four internal grid intersections')
     args = parser.parse_args()
@@ -86,8 +93,9 @@ def main():
         client.command(kind='reset', speed=.1)
         client.park()
         client.frame('cleared.jpg')
+        prepare_grid(client)
     if args.play:
-        play_game(client, args.weights, json.loads(Path(args.grid_points).read_text()))
+        play_game(client, args.weights, json.loads(Path(args.grid_points).read_text()), resume_one_x=args.resume_one_x)
 
 
 
@@ -103,6 +111,15 @@ class RemoteDrawing:
             (root/'tictactoe_motion/config/board_real.yaml').read_text())))
         self.width, self.height = self.geometry.width, self.geometry.height
         self.client = client
+
+    def grid_strokes(self, *args, **kwargs):
+        return self.geometry.grid_strokes(*args, **kwargs)
+
+    def x_strokes(self, *args, **kwargs):
+        return self.geometry.x_strokes(*args, **kwargs)
+
+    def o_strokes(self, *args, **kwargs):
+        return self.geometry.o_strokes(*args, **kwargs)
 
     def draw(self, strokes, **options):
         self.client.command(kind='canvas', strokes=strokes, speed=1.)
@@ -128,7 +145,7 @@ def prepare_grid(client):
     client.frame('grid.jpg')
 
 
-def play_game(client, weights, points):
+def play_game(client, weights, points, *, resume_one_x=False):
     import cv2
     from tictactoe_gui.real_board_perception import RealBoardPerception
     from tictactoe_perception.stable_player_move import StablePlayerMove
@@ -143,7 +160,11 @@ def play_game(client, weights, points):
             print('GAME', state['game']['phase'], state['game']['board'], flush=True)
     game = GameCoordinator(actions, publish, lambda: False, flip=False)
     initial, _ = client.frame('baseline.jpg')
-    if perception.detect_cells(initial.read_bytes()):
+    initial_cells = perception.detect_cells(initial.read_bytes())
+    if resume_one_x:
+        if len(initial_cells) != 1 or next(iter(initial_cells.values())) != {'X'}:
+            raise RuntimeError('Resume requires exactly one visible X and no O')
+    elif initial_cells:
         raise RuntimeError('Initial board is not empty')
     game.start(3, 0, input_source='vision')
     turn = 0
@@ -153,7 +174,8 @@ def play_game(client, weights, points):
         candidates = (0, 4, 8, 2, 6, 1, 3, 5, 7)
         cell = next(i for i in candidates if not game.game.board[i])
         row, col = divmod(cell, 3)
-        actions.draw_x(game.game.cell_center(row, col), game.game.cell_size*.55)
+        if not (resume_one_x and turn == 1):
+            actions.draw_x(game.game.cell_center(row, col), game.game.cell_size*.55)
         gate = StablePlayerMove([game.game.board[i:i+3] for i in (0, 3, 6)], 'X')
         observations = []
         found = None

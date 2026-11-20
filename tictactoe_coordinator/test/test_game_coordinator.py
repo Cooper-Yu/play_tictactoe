@@ -196,3 +196,12 @@ def test_camera_move_records_existing_mark_and_draws_only_ai_reply():
     with pytest.raises(ValueError, match="已经落子"):
         game.register_observed_move(1, 2, "X", 2)
     assert [mark for mark, _ in actions.calls] == ["O"]
+
+
+def test_real_camera_order_preserves_top_left():
+    actions = Actions()
+    game = GameCoordinator(actions, lambda **data: None, lambda: False, flip=False)
+    game.start(3, 1)
+    center = game.game.cell_center(0, 0)
+    assert center[0] < .5
+    assert center[1] < .5
