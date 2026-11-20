@@ -37,14 +37,13 @@ class CanvasDrawing(StrokeDrawing):
         planner = driver.node.cartesian_planner
         requested = {key: driver.node.get_parameter(key).value
                      for key in ('velocity_scaling', 'acceleration_scaling')}
-        slow = dict.fromkeys(requested, .1)
 
         def configure(native):
-            driver.parameters(**(requested if native else slow))
+            driver.parameters(**requested)
             planner.canvas_native_timing = native
 
         def progress(name):
-            configure(name == 'approach' or name[0].isdigit())
+            configure(True)
             on_stage(name)
 
         try:
@@ -52,7 +51,7 @@ class CanvasDrawing(StrokeDrawing):
             if self.exit_to_transfer:
                 if cancelled():
                     raise RuntimeError('Drawing cancelled before exit lift')
-                configure(False)
+                configure(True)
                 on_stage('exit_lift')
                 lift = copy.deepcopy(driver.current_pose().position)
                 lift.z = self.transfer_z

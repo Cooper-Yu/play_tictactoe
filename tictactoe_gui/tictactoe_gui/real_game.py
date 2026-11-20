@@ -69,7 +69,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                                    robot_fresh=state.get('fresh', False))
                 except Exception as error:
                     session.update(camera_fresh=False, camera_error=str(error))
-                session.shutdown.wait(.3)
+                session.shutdown.wait(.1)
 
     camera_thread = threading.Thread(target=camera_loop, daemon=True)
     camera_thread.start()
@@ -180,7 +180,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                         found = observe()
                         if found:
                             break
-                        session.shutdown.wait(.2)
+                        session.shutdown.wait(.05)
                     if found is None:
                         raise RuntimeError('Camera has not confirmed one unique new mark, Inspect the board before continuing')
                     register(found, job['job'])

@@ -27,6 +27,24 @@ def continuous_line(parts, width, height):
     return points
 
 
+def continuous_closed_curve(parts, width, height):
+    """Preserve a small smooth closed stroke, with pre-execution segmented fallback."""
+    if len(parts) < 2:
+        return None
+    points = parts[0] + [p for part in parts[1:] for p in part[1:]]
+    metric = [(u*width, v*height) for u,v in points]
+    length = sum(math.dist(a,b) for a,b in zip(metric, metric[1:]))
+    if not .06 < length <= .120000001 or len(points) > 500:
+        return None
+    if math.dist(metric[0], metric[-1]) > .0005:
+        return None
+    for a,b,c in zip(metric, metric[1:], metric[2:]):
+        ab,bc = (b[0]-a[0],b[1]-a[1]), (c[0]-b[0],c[1]-b[1])
+        if sum(x*y for x,y in zip(ab,bc)) < math.cos(math.pi/6)*math.hypot(*ab)*math.hypot(*bc):
+            return None
+    return points
+
+
 class CanvasAction:
     """! @brief Validate all user strokes, then execute lifted batches in source order."""
     def __init__(self, canvas, strokes):
@@ -40,6 +58,8 @@ class CanvasAction:
             items = list(items)
             parts = [item['points'] for item in items]
             line = continuous_line(parts, width, height)
+            if line is None:
+                line = continuous_closed_curve(parts, width, height)
             if line is None:
                 self.prepared.extend(items)
             else:

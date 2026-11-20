@@ -200,3 +200,49 @@ def test_real_canvas_approach_splits_only_rejected_plan():
     assert all(point.z == .216 and not retry for point, retry in split.calls[1:])
     with pytest.raises(RuntimeError, match='cancelled'):
         CanvasDrawing.real_approach(split, start, end, lambda: True)
+
+
+def test_small_closed_circle_preserves_one_stroke_with_preflight_fallback():
+    import math
+    from tictactoe_gui.canvas_action import continuous_closed_curve
+    canvas = board()
+    radius = .011
+    raw = [[[.5+radius*math.cos(t*2*math.pi/128)/.136,
+              .5+radius*math.sin(t*2*math.pi/128)/.175] for t in range(129)]]
+    action = CanvasAction(canvas, raw)
+    assert len(action.prepared) == 1
+    assert len(action.drawings[0].fallback[1]) == 2
+    path = action.prepared[0]['points']
+    assert path[0] == pytest.approx(path[-1])
+    assert len(path) >= 129
+    assert continuous_closed_curve([[[0,0],[.1,0]],[[.1,0],[.1,.1],[0,0]]],1,1) is None
+
+
+def test_long_or_open_curves_keep_lifted_segments():
+    import math
+    from tictactoe_gui.canvas_action import continuous_closed_curve
+    circle = [[.5+.025*math.cos(t*2*math.pi/128),
+               .5+.025*math.sin(t*2*math.pi/128)] for t in range(129)]
+    assert continuous_closed_curve([circle[:65],circle[64:]],1,1) is None
+    circle = [[.5+.011*math.cos(t*2*math.pi/128),
+               .5+.011*math.sin(t*2*math.pi/128)] for t in range(120)]
+    assert continuous_closed_curve([circle[:65],circle[64:]],1,1) is None
+
+def test_transfer_stages_honor_requested_speed_and_restore_on_failure(monkeypatch):
+    from types import SimpleNamespace as S
+    from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
+    c=board()
+    d=CanvasDrawing(c,[[[.5,.5],[.6,.5]]],upper_z=.211,depth=.005,transfer_z=.216)
+    calls=[]
+    node=S(cartesian_planner=S(canvas_native_timing=False),
+           get_parameter=lambda key:S(value=.4 if key=='velocity_scaling' else .3))
+    driver=S(node=node,parameters=lambda **kw:calls.append(kw))
+    def fail(driver, cancelled, progress):
+        for name in ('raise_before_transfer','approach_hover','1_lower'):
+            progress(name)
+            assert driver.node.cartesian_planner.canvas_native_timing
+        raise RuntimeError('feedback stale')
+    monkeypatch.setattr(d,'_run',fail)
+    with pytest.raises(RuntimeError,match='feedback stale'):d.run(driver)
+    assert all(c==dict(velocity_scaling=.4,acceleration_scaling=.3) for c in calls)
+    assert not driver.node.cartesian_planner.canvas_native_timing

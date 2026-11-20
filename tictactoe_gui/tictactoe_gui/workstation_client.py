@@ -121,7 +121,7 @@ class Workstation:
                 timing('command_complete', job=job, kind=command['kind'], seconds=record['seconds'])
                 print('DONE', job, round(record['seconds'], 2), state['message'], flush=True)
                 return state
-            time.sleep(.5)
+            time.sleep(.1)
         raise TimeoutError('Job did not finish within 300 seconds')
 
     def stop(self):
