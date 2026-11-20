@@ -158,3 +158,51 @@ def test_invalid_phase_scaling_is_rejected_before_motion(key, value):
     p = profile(); p[key] = value
     with pytest.raises(ValueError, match='phase scaling'):
         BoardCanvas(p)
+
+
+@pytest.mark.parametrize('value', [.49, .71, float('nan'), float('inf'), True, '0.7'])
+def test_invalid_transfer_excursion_rejected_before_motion(value):
+    p = profile(); p['transfer_joint_excursion_rad'] = value
+    with pytest.raises(ValueError, match='Transfer joint excursion'):
+        BoardCanvas(p)
+
+
+def test_only_horizontal_pen_up_moves_use_relaxed_limit():
+    d = real_driver(); observed = []; stage = ['']
+    original = d.linear
+    def linear(point, **options):
+        observed.append((stage[0], d.actual.position.z, point.z,
+                         options.get('excursion_limit', .5)))
+        return original(point, **options)
+    d.linear = linear
+    a = DrawingActions(BoardCanvas(profile()), d)
+    a.draw_x(on_stage=lambda name: stage.__setitem__(0, name))
+    assert any(name == '2_transfer' for name, *_ in observed)
+    for name, start_z, end_z, limit in observed:
+        if name in ('approach', '2_transfer'):
+            assert limit == .7
+            assert start_z == pytest.approx(end_z)
+            assert start_z >= .211
+        else:
+            assert limit == .5
+
+
+def test_relaxed_transfer_rejection_keeps_segmented_fallback():
+    from geometry_msgs.msg import Point
+    from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
+    calls = []
+    class TransferDriver:
+        def linear(self, point, **options):
+            calls.append((copy.deepcopy(point), options))
+            return None if options.get('allow_excursion_retry') else {'passed': True}
+    start = Point(x=.12, y=-.1, z=.216)
+    end = Point(x=.12, y=.03, z=.216)
+    result = CanvasDrawing.real_approach(TransferDriver(), start, end, lambda: False,
+                                        excursion_limit=.7)
+    assert result['approach_segments'] == 3
+    assert calls[0][1]['excursion_limit'] == .7
+    assert all(options.get('excursion_limit', .5) == .5 for _, options in calls[1:])
+    assert calls[-1][0] == end
+    with pytest.raises(ValueError, match='horizontal'):
+        CanvasDrawing.real_approach(TransferDriver(), start, Point(x=.12,y=.03,z=.211),
+                                    lambda: False, excursion_limit=.7)

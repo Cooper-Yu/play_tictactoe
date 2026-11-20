@@ -107,9 +107,11 @@ class MotionDriver:
     def pose(self, target):
         return self.pose_motion.move(target)
 
-    def linear(self, target_position, *, speed=None, allow_excursion_retry=False):
+    def linear(self, target_position, *, speed=None, allow_excursion_retry=False,
+               excursion_limit=.5):
         return self.cartesian_motion.linear(
-            target_position, speed=speed, allow_excursion_retry=allow_excursion_retry
+            target_position, speed=speed, allow_excursion_retry=allow_excursion_retry,
+            excursion_limit=excursion_limit
         )
 
 

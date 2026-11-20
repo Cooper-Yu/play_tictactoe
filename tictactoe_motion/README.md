@@ -247,3 +247,10 @@ approach segmentation remain. Manual jog limits are unchanged. Heights remain
 206/211/216 mm and the original feedback/TF control chain is retained. The new phase
 combination and 45% complex curves still need real-hardware verification; unit and
 mock-browser checks do not certify physical tracking or ink quality.
+
+Real-board horizontal pen-up transfers use `transfer_joint_excursion_rad: 0.7`.
+This bounds each joint's maximum deviation from the trajectory start, not the
+adjacent-waypoint jump. A rejected full transfer retains the existing segmented
+fallback at 0.5 rad. Vertical pen motion, contact-stroke limits, Reset, collision,
+Cartesian continuity, execution-result and feedback checks are unchanged.
+This setting requires a new real-robot trial before claiming hardware validation.

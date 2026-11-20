@@ -38,6 +38,10 @@ class BoardCanvas:
                 if (isinstance(value, bool) or not isinstance(value, (int, float))
                         or not math.isfinite(value) or not 0 < value <= speed):
                     raise ValueError('Invalid real drawing phase scaling: '+key)
+            excursion = profile.get('transfer_joint_excursion_rad', .5)
+            if (isinstance(excursion, bool) or not isinstance(excursion, (int, float))
+                    or not math.isfinite(excursion) or not .5 <= excursion <= .7):
+                raise ValueError('Transfer joint excursion must be in [0.5, 0.7] rad')
             writing = profile.get('drawing_link6_z_m', float('nan'))
             hover = profile.get('hover_link6_z_m', float('nan'))
             if not (math.isfinite(writing) and math.isfinite(hover)

@@ -3,9 +3,12 @@
 from tictactoe_motion.trajectory_motion.trajectory_checks import JointExcursionError
 
 
-def accept_linear(driver, *, allow_retry):
+def accept_linear(driver, *, allow_retry, limit=.5):
     try:
-        driver.guard()
+        if limit == .5:
+            driver.guard()
+        else:
+            driver.guard(limit)
     except JointExcursionError as error:
         if not allow_retry:
             raise

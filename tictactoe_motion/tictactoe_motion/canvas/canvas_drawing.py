@@ -22,6 +22,7 @@ class CanvasDrawing(StrokeDrawing):
         self.paths=[canvas.stroke(points,snap=snap, **length_options) for points in strokes]
         self.fallback = {i: [canvas.stroke(points, snap=snap, **length_options) for points in parts]
                          for i, parts in (fallback or {}).items()}
+        self.transfer_excursion_limit = canvas.profile.get('transfer_joint_excursion_rad', .5)
         self.continuous_excursion_limit = canvas.profile.get('continuous_stroke_joint_excursion_rad', .5)
         if not .5 <= self.continuous_excursion_limit <= 1.:
             raise ValueError('Continuous stroke joint excursion must be in [0.5, 1.0] rad')
@@ -80,11 +81,16 @@ class CanvasDrawing(StrokeDrawing):
             driver.parameters(**requested)
 
     @staticmethod
-    def real_approach(driver, start, destination, cancelled):
+    def real_approach(driver, start, destination, cancelled, *, excursion_limit=.5):
         """Try one verified move, then split a rejected horizontal joint excursion."""
         if cancelled():
             raise RuntimeError('Drawing cancelled before canvas approach')
-        result = driver.linear(destination, allow_excursion_retry=True)
+        options = {'allow_excursion_retry': True}
+        if excursion_limit != .5:
+            if abs(destination.z-start.z) > .0001:
+                raise ValueError('Relaxed excursion requires horizontal pen-up travel')
+            options['excursion_limit'] = excursion_limit
+        result = driver.linear(destination, **options)
         if result is not None:
             return result
         distance = math.hypot(destination.x-start.x, destination.y-start.y)
@@ -142,7 +148,8 @@ class CanvasDrawing(StrokeDrawing):
             result = dict(passed=True, skipped=True, reason='already_at_approach',
                           position_error_m=distance, orientation_error_rad=0.)
         elif self.canvas.environment == 'real':
-            result = self.real_approach(driver, actual, upper.position, cancelled)
+            result = self.real_approach(driver, actual, upper.position, cancelled,
+                                        excursion_limit=self.transfer_excursion_limit)
         else:
             result = driver.pose(upper)
         if not isinstance(result,dict) or result.get('passed') is not True:raise RuntimeError('Canvas approach failed')
@@ -167,5 +174,13 @@ class CanvasDrawing(StrokeDrawing):
 
         strokes = [poses(path) for path in self.paths]
         fallback = {i: [poses(path) for path in parts] for i, parts in self.fallback.items()}
+        def transfer(target):
+            start = driver.current_pose().position
+            if min(start.z, target.z) < self.upper_z-.0001:
+                raise RuntimeError('Pen-up clearance not reached before transfer')
+            return self.real_approach(driver, start, target, cancelled,
+                                      excursion_limit=self.transfer_excursion_limit)
+
         return self.run_strokes(driver, strokes, upper, cancelled, on_stage, fallback,
-                                candidate_excursion_limit=self.continuous_excursion_limit)
+                                candidate_excursion_limit=self.continuous_excursion_limit,
+                                transfer_action=transfer if self.canvas.environment == 'real' else None)

@@ -11,7 +11,7 @@ class Driver:
         self.actual=Pose(); self.actual.position.z=.25; self.actual.orientation.y=1.
         self.calls=[]; self.fail_at=fail_at
     def current_pose(self): return copy.deepcopy(self.actual)
-    def linear(self, point, *, speed=None, allow_excursion_retry=False):
+    def linear(self, point, *, speed=None, allow_excursion_retry=False, excursion_limit=.5):
         self.actual.position=copy.deepcopy(point)
         self.calls.append(('linear',self.current_pose()))
         return {'passed':len(self.calls)!=self.fail_at}

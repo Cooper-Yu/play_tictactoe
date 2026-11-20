@@ -1,5 +1,7 @@
 """Straight Cartesian moves and XY strokes."""
 
+import math
+
 from . import check_result, check_trajectory, execute, plan
 
 
@@ -9,10 +11,15 @@ class CartesianMotion:
     def __init__(self, driver):
         self.driver = driver
 
-    def linear(self, target_position, *, speed=None, allow_excursion_retry=False):
+    def linear(self, target_position, *, speed=None, allow_excursion_retry=False,
+               excursion_limit=.5):
+        if (isinstance(excursion_limit, bool)
+                or not isinstance(excursion_limit, (int, float))
+                or not math.isfinite(excursion_limit) or not .5 <= excursion_limit <= .7):
+            raise ValueError("Linear joint excursion must be in [0.5, 0.7] rad")
         plan.linear(self.driver, target_position, speed=speed)
         if not check_trajectory.accept_linear(
-            self.driver, allow_retry=allow_excursion_retry
+            self.driver, allow_retry=allow_excursion_retry, limit=excursion_limit
         ):
             return None
         result = execute.run(self.driver)

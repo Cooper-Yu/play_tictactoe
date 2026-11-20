@@ -170,3 +170,35 @@ def test_driver_rechecks_stop_before_execution_service():
     driver.call=Mock()
     with pytest.raises(RuntimeError):driver.execute()
     driver.call.assert_not_called()
+
+
+@pytest.mark.parametrize('limit,accepted', [(.5, False), (.7, True)])
+def test_linear_excursion_limit_uses_real_trajectory_check(limit, accepted):
+    from trajectory_msgs.msg import JointTrajectoryPoint
+    from moveit_msgs.msg import RobotTrajectory
+    from tictactoe_motion.trajectory_motion.trajectory_checks import check_trajectory
+    driver = Mock()
+    trajectory = RobotTrajectory()
+    trajectory.joint_trajectory.joint_names = [f'joint{i}' for i in range(1, 7)]
+    for angle, sec in [(0., 0), (.59066, 1)]:
+        point = JointTrajectoryPoint()
+        point.positions = [angle, 0., 0., 0., 0., 0.]
+        point.time_from_start.sec = sec
+        trajectory.joint_trajectory.points.append(point)
+    driver.guard.side_effect = lambda value=.5: check_trajectory(trajectory, value)
+    driver.node.settings = {'return_position_tolerance': .001,
+                            'return_orientation_tolerance': .01}
+    driver.execute.return_value = {'passed': True, 'position_error_m': 0.,
+                                    'orientation_error_rad': 0.}
+    result = CartesianMotion(driver).linear(Pose().position, excursion_limit=limit,
+                                            allow_excursion_retry=True)
+    assert (result is not None) == accepted
+    assert driver.execute.call_count == int(accepted)
+
+
+@pytest.mark.parametrize('limit', [.49, .71, float('nan'), True])
+def test_invalid_linear_excursion_never_plans(limit):
+    driver = Mock()
+    with pytest.raises(ValueError, match='Linear joint excursion'):
+        CartesianMotion(driver).linear(Pose().position, excursion_limit=limit)
+    driver.node.cartesian_planner.request_linear_position.assert_not_called()

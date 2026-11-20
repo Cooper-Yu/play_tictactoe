@@ -43,7 +43,7 @@ class StrokeDrawing:
         return self.run_strokes(driver, self.strokes, upper, cancelled, on_stage)
 
     def run_strokes(self, driver, strokes, upper, cancelled, on_stage, fallback=None, *,
-                    candidate_excursion_limit=.5):
+                    candidate_excursion_limit=.5, transfer_action=None):
         """! @brief Execute prepared strokes after an explicit elevated approach."""
         self.strokes = copy.deepcopy(strokes)
         def step(name, action):
@@ -69,7 +69,8 @@ class StrokeDrawing:
             if i > 1 and not same_start:
                 transfer = copy.deepcopy(stroke[0].position)
                 transfer.z = upper.position.z
-                step(f'{i}_transfer', lambda: driver.linear(transfer))
+                step(f'{i}_transfer', lambda: transfer_action(transfer)
+                     if transfer_action is not None else driver.linear(transfer))
             # Lower vertically at the achieved start, avoiding lateral motion.
             depth_z = stroke[0].position.z
             vertical(f'{i}_lower', depth_z)
