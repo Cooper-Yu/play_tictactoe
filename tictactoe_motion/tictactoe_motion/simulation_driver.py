@@ -18,12 +18,14 @@ from rclpy.parameter import Parameter
 from std_srvs.srv import Trigger
 
 from tictactoe_motion.motion_demo import MotionDemo
+from tictactoe_motion.motion_primitives import (
+    CartesianMotion,
+    JointExcursionError,
+    JointMotion,
+    PoseMotion,
+)
 from tictactoe_motion.motion_planner import MotionPlanner
 from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
-
-
-class JointExcursionError(ValueError):
-    """A planned trajectory exceeds the allowed joint excursion."""
 
 
 class SimulationDriver:
@@ -43,6 +45,9 @@ class SimulationDriver:
         self.executor.add_node(self.node)
         self.executor.add_node(self.client)
         self.execution = self.node.trajectory_executor
+        self.cartesian_motion = CartesianMotion(self)
+        self.pose_motion = PoseMotion(self)
+        self.joint_motion = JointMotion(self)
         self.services = {}
         self.fk_client = self.client.create_client(GetPositionFK, '/compute_fk')
         self.samples = []
@@ -126,14 +131,7 @@ class SimulationDriver:
             raise RuntimeError('Sequence cancelled; no further motion request allowed')
 
     def named(self, name):
-        joints, target = self.named_target(name)
-        self.check_motion_guard()
-        assert self.node.request_joint_plan(joints, target, name)
-        self.until(lambda: not self.node.is_planning)
-        self.guard(2.0)
-        result = self.execute()
-        assert result.get('passed'), result
-        return result
+        return self.joint_motion.named(name)
 
     def current_pose(self):
         return self.node.cartesian_planner.start_pose()
@@ -148,52 +146,19 @@ class SimulationDriver:
         return result
 
     def pose(self, target):
-        self.check_motion_guard()
-        assert self.node.request_pose_plan(target, orientation_tolerance=.001)
-        self.until(lambda: not self.node.is_planning)
-        self.guard(2.0)
-        return self.verified_pose_result(self.execute())
+        return self.pose_motion.move(target)
 
     def linear(self, target_position, *, speed=None, allow_excursion_retry=False):
-        self.check_motion_guard()
-        assert self.node.cartesian_planner.request_linear_position(target_position, speed=speed)
-        self.until(lambda: not self.node.is_planning)
-        try:
-            self.guard()
-        except JointExcursionError:
-            if not allow_excursion_retry:
-                raise
-            self.node.invalidate_plan()
-            return None
-        return self.verified_pose_result(self.execute())
+        return self.cartesian_motion.linear(
+            target_position, speed=speed, allow_excursion_retry=allow_excursion_retry
+        )
 
 
     def path(self, poses, excursion_limit=0.5, *, speed=None, allow_plan_retry=False):
         """Execute an XY stroke at the achieved drawing height and orientation."""
-        self.check_motion_guard()
-        start = self.current_pose()
-        path = [copy.deepcopy(start)]
-        for pose in poses[1:]:
-            target = copy.deepcopy(start)
-            target.position.x, target.position.y = pose.position.x, pose.position.y
-            path.append(target)
-        assert self.node.cartesian_planner.request_path(path, speed=speed)
-        self.until(lambda: not self.node.is_planning)
-        self.check_motion_guard()
-        if allow_plan_retry and self.node.planned_trajectory is None:
-            report = self.node.cartesian_planner.last_report or {}
-            reason = report.get('reason', '')
-            if reason.startswith(('Incomplete Cartesian path:', 'FK path deviation:',
-                                  'Cartesian joint jump exceeds limit')):
-                return None
-        try:
-            self.guard(excursion_limit)
-        except JointExcursionError:
-            if not allow_plan_retry:
-                raise
-            self.node.invalidate_plan()
-            return None
-        return self.verified_pose_result(self.execute())
+        return self.cartesian_motion.path(
+            poses, excursion_limit, speed=speed, allow_plan_retry=allow_plan_retry
+        )
 
     def guard(self, limit=0.5):
         trajectory = self.node.planned_trajectory
@@ -254,15 +219,7 @@ class SimulationDriver:
         return self.recording.recorder.get_pose(name)
 
     def replay(self, name):
-        self.parameters(record_name=name)
-        self.recording.recorder.poses = {}
-        self.call('load_pose')
-        self.call('plan_return')
-        self.until(lambda: not self.node.is_planning)
-        self.guard(2.0)
-        result = self.execute()
-        assert result.get('passed'), result
-        return result
+        return self.joint_motion.replay(name)
 
     def close(self):
         if self.execution.is_executing:

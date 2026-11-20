@@ -6,6 +6,7 @@ from geometry_msgs.msg import Pose, TransformStamped, Point
 import rclpy
 from tictactoe_motion.pose_cycle import PoseCycle
 from tictactoe_motion.motion_planner import MotionPlanner
+from tictactoe_motion.motion_primitives import JointMotion
 
 
 def target():
@@ -98,7 +99,8 @@ def test_named_driver_checks_stop_after_async_fk_before_planning():
         stopped[0]=True
         return {},target()
     driver.named_target=fk
-    with pytest.raises(RuntimeError):driver.named('zero')
+    driver.joint_motion = JointMotion(driver)
+    with pytest.raises(RuntimeError, match="Sequence cancelled"):driver.named('zero')
     driver.node.request_joint_plan.assert_not_called()
 
 
