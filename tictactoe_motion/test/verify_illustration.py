@@ -16,10 +16,10 @@ from rclpy.utilities import remove_ros_args
 from gazebo_msgs.srv import GetModelList
 from simulation_support import SimulationHarness,write_report
 from board_scene_support import verify_scene
-from tictactoe_motion.board_canvas import BoardCanvas
-from tictactoe_motion.drawing_actions import DrawingActions
-from tictactoe_motion.illustration_drawing import IllustrationDrawing
-from tictactoe_motion.simulated_board import SimulatedBoard
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
+from tictactoe_motion.actions.drawing_actions import DrawingActions
+from tictactoe_motion.canvas.illustration_drawing import IllustrationDrawing
+from tictactoe_motion.simulation.simulated_board import SimulatedBoard
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
         a=DrawingActions(BoardCanvas(profile),h,upper_z=profile['hover_link6_z_m'],depth=profile['hover_link6_z_m']-profile['drawing_link6_z_m'])
         illustration=IllustrationDrawing(a)
         paths=illustration.strokes(args.shape,width=args.width,rotation=180)
-        report['asset_sha256']=hashlib.sha256(files('tictactoe_motion').joinpath('illustrations',args.shape+'.json').read_bytes()).hexdigest()
+        report['asset_sha256']=hashlib.sha256(files('tictactoe_motion.canvas').joinpath('illustrations',args.shape+'.json').read_bytes()).hexdigest()
         report['geometry']={'rotation_degrees':180,'width_m':args.width,'strokes':len(paths),'points':sum(map(len,paths))}
         illustration.export_svg(args.shape,Path(args.output)/(args.shape+'.svg'))
         h.named('zero');_,target=h.named_target('clear');target=copy.deepcopy(target);target.position.z=profile['hover_link6_z_m'];h.pose(target)

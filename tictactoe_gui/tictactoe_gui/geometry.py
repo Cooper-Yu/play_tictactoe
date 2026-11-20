@@ -12,7 +12,7 @@ def load_illustration(name, width=.06, *, board_width=.144, board_height=.193, f
     """
     if name not in ('chair', 'docker', 'smile'):
         raise ValueError('未知素材')
-    asset=json.loads(files('tictactoe_motion').joinpath('illustrations',name+'.json').read_text())
+    asset=json.loads(files('tictactoe_motion.canvas').joinpath('illustrations',name+'.json').read_text())
     strokes=[[[.5+(u-.5)*width/(board_width-.002),
                .5+(v-.5)*(width/asset['aspect'])/(board_height-.002)] for u,v in stroke]
              for stroke in asset['strokes']]

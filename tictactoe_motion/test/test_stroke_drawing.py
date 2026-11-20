@@ -3,7 +3,7 @@ import copy
 import math
 import pytest
 from geometry_msgs.msg import Pose
-from tictactoe_motion.stroke_drawing import StrokeDrawing
+from tictactoe_motion.actions.stroke_drawing import StrokeDrawing
 
 
 class Driver:

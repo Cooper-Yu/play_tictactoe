@@ -14,9 +14,9 @@ from rclpy.utilities import remove_ros_args
 from gazebo_msgs.srv import GetModelList
 from simulation_support import SimulationHarness,write_report
 from board_scene_support import verify_scene
-from tictactoe_motion.board_canvas import BoardCanvas
-from tictactoe_motion.canvas_drawing import CanvasDrawing
-from tictactoe_motion.simulated_board import SimulatedBoard
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
+from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
+from tictactoe_motion.simulation.simulated_board import SimulatedBoard
 
 
 def circle(canvas,center,radius=.01,count=128):

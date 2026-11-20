@@ -1,6 +1,6 @@
 """Apply Cartesian trajectory checks and retry rules."""
 
-from tictactoe_motion.trajectory_checks import JointExcursionError
+from tictactoe_motion.trajectory_motion.trajectory_checks import JointExcursionError
 
 
 def accept_linear(driver, *, allow_retry):

@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from rclpy.utilities import remove_ros_args
 from simulation_support import SimulationHarness, write_report
-from tictactoe_motion.pose_cycle import PoseCycle
+from tictactoe_motion.actions.pose_cycle import PoseCycle
 
 
 def vertical_metrics(samples, upper):

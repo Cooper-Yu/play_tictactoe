@@ -2,7 +2,7 @@
 import copy
 import math
 
-from tictactoe_motion.drawing_paths import circle_path, cross_path
+from tictactoe_motion.actions.drawing_paths import circle_path, cross_path
 
 
 class StrokeDrawing:

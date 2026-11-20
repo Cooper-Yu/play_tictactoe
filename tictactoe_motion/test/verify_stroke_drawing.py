@@ -6,8 +6,8 @@ from pathlib import Path
 import sys
 from rclpy.utilities import remove_ros_args
 from simulation_support import SimulationHarness, write_report
-from tictactoe_motion.stroke_drawing import StrokeDrawing
-from tictactoe_motion.cartesian_planner import polyline_error
+from tictactoe_motion.actions.stroke_drawing import StrokeDrawing
+from tictactoe_motion.trajectory_motion.cartesian_planner import polyline_error
 
 
 def main():

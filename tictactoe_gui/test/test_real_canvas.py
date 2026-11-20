@@ -11,7 +11,7 @@ from tictactoe_gui.geometry import prepare_strokes, load_illustration
 from tictactoe_gui.workbench import WorkbenchSession, make_handler, validate_command
 from tictactoe_gui.cloud_gateway import make_gateway
 from tictactoe_gui.canvas_action import CanvasAction
-from tictactoe_motion.board_canvas import BoardCanvas
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
 
 
 def board():
@@ -132,7 +132,7 @@ def test_long_straight_source_preserves_segmented_fallback(length, candidate):
 
 def test_plan_rejection_retries_before_any_ink_and_execution_error_stops():
     from geometry_msgs.msg import Pose
-    from tictactoe_motion.stroke_drawing import StrokeDrawing
+    from tictactoe_motion.actions.stroke_drawing import StrokeDrawing
 
     class Driver:
         def __init__(self, fail=False):
@@ -177,7 +177,7 @@ def test_plan_rejection_retries_before_any_ink_and_execution_error_stops():
 
 def test_real_canvas_approach_splits_only_rejected_plan():
     from geometry_msgs.msg import Point
-    from tictactoe_motion.canvas_drawing import CanvasDrawing
+    from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
 
     class Driver:
         def __init__(self, reject):

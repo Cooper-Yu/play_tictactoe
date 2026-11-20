@@ -13,9 +13,9 @@ from moveit_msgs.msg import PositionConstraint, OrientationConstraint, Constrain
 from rclpy.action import ActionClient
 from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
-from tictactoe_motion.trajectory_executor import TrajectoryExecutor
-from tictactoe_motion.configuration import declare_settings
-from tictactoe_motion.cartesian_planner import CartesianPlanner
+from tictactoe_motion.trajectory_motion.trajectory_executor import TrajectoryExecutor
+from tictactoe_motion.bringup.configuration import declare_settings
+from tictactoe_motion.trajectory_motion.cartesian_planner import CartesianPlanner
 
 
 class MotionPlanner(Node):

@@ -9,7 +9,7 @@ import rclpy
 from controller_manager_msgs.srv import ListControllers
 
 from tictactoe_driver.motion_driver import MotionDriver
-from tictactoe_motion.motion_primitives import JointExcursionError as JointExcursionError
+from tictactoe_motion.basic_motion.motion_primitives import JointExcursionError as JointExcursionError
 
 
 class SimulationDriver(MotionDriver):

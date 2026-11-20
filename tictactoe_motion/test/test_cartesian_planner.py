@@ -9,8 +9,8 @@ from geometry_msgs.msg import Pose, TransformStamped
 from moveit_msgs.msg import RobotTrajectory
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
-from tictactoe_motion.cartesian_planner import stretch_timing, polyline_error
-from tictactoe_motion.motion_planner import MotionPlanner
+from tictactoe_motion.trajectory_motion.cartesian_planner import stretch_timing, polyline_error
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
 
 
 def trajectory():
@@ -101,7 +101,7 @@ def test_zero_nonfinite_and_fixed_height(planner):
 
 def test_closed_path_collapsed_to_start_is_not_accepted(planner):
     from geometry_msgs.msg import PoseStamped
-    from tictactoe_motion.drawing_paths import circle_path
+    from tictactoe_motion.actions.drawing_paths import circle_path
     n,c=planner
     start=c.start_pose()
     assert c.request_path(circle_path(start,.01))
@@ -117,7 +117,7 @@ def test_closed_path_collapsed_to_start_is_not_accepted(planner):
 
 
 def test_interpolation_matches_endpoint_derivative_order():
-    from tictactoe_motion.cartesian_planner import interpolate_joint_segment
+    from tictactoe_motion.trajectory_motion.cartesian_planner import interpolate_joint_segment
     t=trajectory();a,b=t.joint_trajectory.points
     a.velocities=[];b.velocities=[];a.accelerations=[];b.accelerations=[]
     assert interpolate_joint_segment(a,b,.25)==pytest.approx([.0025]*6)

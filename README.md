@@ -296,13 +296,13 @@ move selected by its engine. The earlier scripted moves set up a winning positio
 
 `IllustrationDrawing` reuses `DrawingActions` and its existing motion driver.
 The local material library is
-[tictactoe_motion/tictactoe_motion/illustrations](tictactoe_motion/tictactoe_motion/illustrations/README.md):
+[tictactoe_motion/tictactoe_motion/canvas/illustrations](tictactoe_motion/tictactoe_motion/canvas/illustrations/README.md):
 chair centerlines, Docker outlines and a full smile with slightly offset double
 strokes. JSON contains normalized pen paths and source attribution; SVG provides
 a resolution-independent preview of the same paths.
 
 ```python
-from tictactoe_motion.illustration_drawing import IllustrationDrawing
+from tictactoe_motion.canvas.illustration_drawing import IllustrationDrawing
 
 picture = IllustrationDrawing(actions)
 paths = picture.strokes('chair', center=(0.5, 0.5), width=0.06, rotation=180)

@@ -3,7 +3,7 @@ import copy
 from itertools import groupby
 import math
 from tictactoe_gui.geometry import prepare_strokes
-from tictactoe_motion.canvas_drawing import CanvasDrawing
+from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
 
 
 def continuous_line(parts, width, height):

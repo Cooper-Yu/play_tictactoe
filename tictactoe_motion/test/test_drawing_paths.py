@@ -3,8 +3,8 @@ import copy
 import math
 import pytest
 from geometry_msgs.msg import Pose
-from tictactoe_motion.drawing_paths import cross_path, circle_path
-from tictactoe_motion.cartesian_planner import xyz
+from tictactoe_motion.actions.drawing_paths import cross_path, circle_path
+from tictactoe_motion.trajectory_motion.cartesian_planner import xyz
 
 
 def start():

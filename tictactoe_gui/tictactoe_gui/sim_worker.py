@@ -20,14 +20,14 @@ def simulation_worker(session, *, fast_game=False, perception=None):
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import Image
     import yaml
-    from tictactoe_motion.board_canvas import BoardCanvas
-    from tictactoe_motion.canvas_drawing import CanvasDrawing
-    from tictactoe_motion.drawing_actions import DrawingActions
+    from tictactoe_motion.canvas.board_canvas import BoardCanvas
+    from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
+    from tictactoe_motion.actions.drawing_actions import DrawingActions
     from tictactoe_coordinator.game_coordinator import GameCoordinator, THREE_STONE_MODE
     from tictactoe_perception.stable_player_move import StablePlayerMove
-    from tictactoe_motion.simulated_board import SimulatedBoard
+    from tictactoe_motion.simulation.simulated_board import SimulatedBoard
     from tictactoe_driver.simulation_driver import SimulationDriver
-    from tictactoe_motion.simulation_scene import verify_scene
+    from tictactoe_motion.simulation.simulation_scene import verify_scene
 
     profile = yaml.safe_load((Path(get_package_share_directory('tictactoe_motion'))/'config/board_sim.yaml').read_text())
     driver = SimulationDriver(session.output, install_signal_handlers=False)

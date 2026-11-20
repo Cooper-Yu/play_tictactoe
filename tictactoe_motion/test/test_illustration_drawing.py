@@ -4,9 +4,9 @@ from pathlib import Path
 from unittest.mock import Mock
 import pytest
 import yaml
-from tictactoe_motion.board_canvas import BoardCanvas
-from tictactoe_motion.drawing_actions import DrawingActions
-from tictactoe_motion.illustration_drawing import IllustrationDrawing
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
+from tictactoe_motion.actions.drawing_actions import DrawingActions
+from tictactoe_motion.canvas.illustration_drawing import IllustrationDrawing
 
 
 def illustration():

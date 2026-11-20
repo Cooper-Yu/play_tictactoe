@@ -16,8 +16,8 @@ from std_srvs.srv import Trigger
 from rclpy.qos import DurabilityPolicy
 from unique_identifier_msgs.msg import UUID
 
-from tictactoe_motion.motion_planner import MotionPlanner
-from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
+from tictactoe_motion.pose_recording.pose_recording_demo import PoseRecordingDemo
 
 
 def done(value=None, error=None):

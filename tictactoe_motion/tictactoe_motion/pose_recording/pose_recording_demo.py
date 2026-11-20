@@ -14,7 +14,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import TransformException
 
-from tictactoe_motion.pose_recorder import PoseRecorder
+from tictactoe_motion.pose_recording.pose_recorder import PoseRecorder
 
 
 class PoseRecordingDemo:

@@ -4,8 +4,8 @@ from unittest.mock import Mock
 import pytest
 from geometry_msgs.msg import Pose, TransformStamped, Point
 import rclpy
-from tictactoe_motion.pose_cycle import PoseCycle
-from tictactoe_motion.motion_planner import MotionPlanner
+from tictactoe_motion.actions.pose_cycle import PoseCycle
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
 
 
 def target():

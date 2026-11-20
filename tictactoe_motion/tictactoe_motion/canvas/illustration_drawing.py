@@ -3,7 +3,7 @@ import json
 import math
 from importlib.resources import files
 from pathlib import Path
-from tictactoe_motion.canvas_drawing import CanvasDrawing
+from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
 
 
 class IllustrationDrawing:
@@ -21,7 +21,7 @@ class IllustrationDrawing:
         """! @brief Load a named bundled asset, without accepting filesystem paths."""
         if name not in ('chair', 'docker', 'smile'):
             raise ValueError('Unknown illustration')
-        return json.loads(files('tictactoe_motion').joinpath('illustrations', name+'.json').read_text())
+        return json.loads(files('tictactoe_motion.canvas').joinpath('illustrations', name+'.json').read_text())
 
     def strokes(self, name, center=(.5, .5), width=.06, rotation=0):
         """! @brief Scale uniformly in metric space, rotate, and validate all paths."""

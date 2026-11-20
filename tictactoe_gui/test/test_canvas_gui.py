@@ -12,7 +12,7 @@ from tictactoe_gui.server import CanvasSession, make_handler
 def test_bundled_preview_reproduces_existing_metric_source(name):
     from tictactoe_gui.geometry import load_illustration
     from importlib.resources import files
-    asset=json.loads(files('tictactoe_motion').joinpath('illustrations',name+'.json').read_text())
+    asset=json.loads(files('tictactoe_motion.canvas').joinpath('illustrations',name+'.json').read_text())
     loaded=load_illustration(name)
     assert len(loaded['strokes'])==len(asset['strokes'])
     for source,preview in zip(asset['strokes'],loaded['strokes']):
@@ -75,7 +75,7 @@ def test_tablet_reset_deletes_one_composite_not_each_stroke(tmp_path):
     import xml.etree.ElementTree as ET
     import yaml
     from pathlib import Path
-    from tictactoe_motion.simulated_board import SimulatedBoard
+    from tictactoe_motion.simulation.simulated_board import SimulatedBoard
     profile=yaml.safe_load((Path(__file__).parents[2]/'tictactoe_motion/config/board_sim.yaml').read_text())
     models={};deletes=[];xml=[]
     class Service:
@@ -104,10 +104,10 @@ def test_tablet_reset_deletes_one_composite_not_each_stroke(tmp_path):
 def test_only_known_readonly_gazebo_teardown_error_retries(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import Mock
-    from tictactoe_motion.simulation_scene import model_pose
+    from tictactoe_motion.simulation.simulation_scene import model_pose
     error=SimpleNamespace(returncode=-6,stdout='',stderr='boost thread: trying joining itself: Resource deadlock avoided')
     good=SimpleNamespace(returncode=0,stdout='0 0 0 0 0 0',stderr='')
-    run=Mock(side_effect=[error,good]);monkeypatch.setattr('tictactoe_motion.simulation_scene.subprocess.run',run)
+    run=Mock(side_effect=[error,good]);monkeypatch.setattr('tictactoe_motion.simulation.simulation_scene.subprocess.run',run)
     assert model_pose('/observed/gz','piper',{})==[0]*6 and run.call_count==2
     run.side_effect=[error,error]
     with pytest.raises(RuntimeError):model_pose('/observed/gz','piper',{})

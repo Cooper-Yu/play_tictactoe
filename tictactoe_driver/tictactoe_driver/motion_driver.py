@@ -11,18 +11,18 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 from std_srvs.srv import Trigger
 
-from tictactoe_motion.joint_motion.plan import named_target
-from tictactoe_motion.motion_demo import MotionDemo
-from tictactoe_motion.motion_primitives import (
+from tictactoe_motion.basic_motion.joint_motion.plan import named_target
+from tictactoe_motion.bringup.motion_demo import MotionDemo
+from tictactoe_motion.basic_motion.motion_primitives import (
     CartesianMotion,
     JointMotion,
     PoseMotion,
 )
-from tictactoe_motion.motion_planner import MotionPlanner
-from tictactoe_motion.pose_motion.check_result import verify_pose_result
-from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
-from tictactoe_motion.trajectory_checks import check_trajectory
-from tictactoe_motion.trajectory_executor import run_trajectory
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
+from tictactoe_motion.basic_motion.pose_motion.check_result import verify_pose_result
+from tictactoe_motion.pose_recording.pose_recording_demo import PoseRecordingDemo
+from tictactoe_motion.trajectory_motion.trajectory_checks import check_trajectory
+from tictactoe_motion.trajectory_motion.trajectory_executor import run_trajectory
 
 
 class MotionDriver:

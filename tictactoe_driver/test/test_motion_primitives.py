@@ -7,7 +7,7 @@ from geometry_msgs.msg import Pose
 import pytest
 
 from tictactoe_driver import motion_driver
-from tictactoe_motion.motion_primitives import (
+from tictactoe_motion.basic_motion.motion_primitives import (
     CartesianMotion,
     JointExcursionError,
     JointMotion,

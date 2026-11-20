@@ -8,7 +8,7 @@ setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
-    package_data={package_name: ['illustrations/*.json', 'illustrations/*.svg']},
+    package_data={package_name + '.canvas': ['illustrations/*.json', 'illustrations/*.svg']},
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -29,7 +29,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'motion_demo = tictactoe_motion.motion_demo:main',
+            'motion_demo = tictactoe_motion.bringup.motion_demo:main',
         ],
     },
 )

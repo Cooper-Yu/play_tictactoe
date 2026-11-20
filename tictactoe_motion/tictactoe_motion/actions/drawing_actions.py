@@ -1,6 +1,6 @@
 """Parameterized grid/X/O commands shared by CLI, future GUI and motion drivers."""
 import math
-from tictactoe_motion.canvas_drawing import CanvasDrawing
+from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
 
 
 class DrawingActions:

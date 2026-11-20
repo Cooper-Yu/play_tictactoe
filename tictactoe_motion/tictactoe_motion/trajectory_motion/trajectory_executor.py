@@ -5,8 +5,8 @@ from action_msgs.msg import GoalStatus
 from moveit_msgs.msg import MoveItErrorCodes
 import time
 import math
-from tictactoe_motion.motion_stop import MotionStop
-from tictactoe_motion.trajectory_result_checker import TrajectoryResultChecker
+from tictactoe_motion.trajectory_motion.motion_stop import MotionStop
+from tictactoe_motion.trajectory_motion.trajectory_result_checker import TrajectoryResultChecker
 
 
 class TrajectoryExecutor:

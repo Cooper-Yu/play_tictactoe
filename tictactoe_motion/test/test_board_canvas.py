@@ -5,9 +5,9 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import pytest
 import yaml
-from tictactoe_motion.board_canvas import BoardCanvas
-from tictactoe_motion.canvas_drawing import CanvasDrawing
-from tictactoe_motion.simulated_board import reset_gesture,write_ribbon
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
+from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
+from tictactoe_motion.simulation.simulated_board import reset_gesture,write_ribbon
 from test_stroke_drawing import Driver
 
 

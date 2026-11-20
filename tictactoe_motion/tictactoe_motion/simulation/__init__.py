@@ -1,0 +1,1 @@
+"""Simulated blackboard and scene."""

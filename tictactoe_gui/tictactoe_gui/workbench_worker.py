@@ -32,7 +32,7 @@ def workbench_worker(session):
         from pathlib import Path
         import yaml
         from ament_index_python.packages import get_package_share_directory
-        from tictactoe_motion.board_canvas import BoardCanvas
+        from tictactoe_motion.canvas.board_canvas import BoardCanvas
         profile_path = Path(get_package_share_directory('tictactoe_motion'))/'config/board_real.yaml'
         real_canvas = BoardCanvas(yaml.safe_load(profile_path.read_text()))
         session.update(canvas=dict(width_mm=(real_canvas.x1-real_canvas.x0)*1000,
@@ -220,7 +220,7 @@ def workbench_worker(session):
             if not result.get('passed', False):
                 raise RuntimeError('实际位姿核对未通过：'+str(result))
         elif kind == 'reset':
-            from tictactoe_motion.reset_action import ResetAction
+            from tictactoe_motion.actions.reset_action import ResetAction
             driver.node.invalidate_plan()
             session.update(plan=None, reset_result=None)
             result = ResetAction(driver, lambda stage: session.update(message=stage)).run(command['speed'], direct_native=session.environment == 'real')
@@ -229,8 +229,8 @@ def workbench_worker(session):
             from pathlib import Path
             import yaml
             from ament_index_python.packages import get_package_share_directory
-            from tictactoe_motion.board_canvas import BoardCanvas
-            from tictactoe_motion.drawing_actions import DrawingActions
+            from tictactoe_motion.canvas.board_canvas import BoardCanvas
+            from tictactoe_motion.actions.drawing_actions import DrawingActions
             if session.environment != 'real':
                 raise ValueError('Real drawing profile required')
             profile_path = Path(get_package_share_directory('tictactoe_motion'))/'config/board_real.yaml'
@@ -243,7 +243,7 @@ def workbench_worker(session):
             actions = DrawingActions(canvas, driver)
             center, size = command['center'], command['size']
             if command['shape'] in ('smile', 'docker', 'chair'):
-                from tictactoe_motion.illustration_drawing import IllustrationDrawing
+                from tictactoe_motion.canvas.illustration_drawing import IllustrationDrawing
                 illustration = IllustrationDrawing(actions)
                 strokes = illustration.strokes(command['shape'], center=center, width=size)
                 skip = command['skip_strokes']

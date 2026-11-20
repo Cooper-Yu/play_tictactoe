@@ -5,8 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 import pytest
 import yaml
-from tictactoe_motion.board_canvas import BoardCanvas
-from tictactoe_motion.drawing_actions import DrawingActions
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
+from tictactoe_motion.actions.drawing_actions import DrawingActions
 from test_stroke_drawing import Driver
 
 
@@ -114,7 +114,7 @@ def test_approach_outside_noop_tolerance_still_moves_at_hover_height():
 
 @pytest.mark.parametrize('name', ['smile', 'docker', 'chair'])
 def test_illustrations_use_real_heights_and_preserve_separate_strokes(name):
-    from tictactoe_motion.illustration_drawing import IllustrationDrawing
+    from tictactoe_motion.canvas.illustration_drawing import IllustrationDrawing
     d=real_driver();a=DrawingActions(BoardCanvas(profile()),d)
     drawing=IllustrationDrawing(a)
     result=drawing.draw(name,width=.05)

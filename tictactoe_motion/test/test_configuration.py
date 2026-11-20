@@ -9,8 +9,8 @@ from geometry_msgs.msg import Pose
 from sensor_msgs.msg import JointState
 from rclpy.time import Time
 from rclpy.parameter import Parameter
-from tictactoe_motion.motion_planner import MotionPlanner
-from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
+from tictactoe_motion.pose_recording.pose_recording_demo import PoseRecordingDemo
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ def test_settle_count_and_return_constraints_use_configuration(node, monkeypatch
         recording.close()
 
 def test_feedback_diagnostics_preserve_stale_gate_and_distinguish_clocks(node, monkeypatch):
-    import tictactoe_motion.motion_planner as planner_module
+    import tictactoe_motion.trajectory_motion.trajectory_planner as planner_module
     clock = Mock()
     clock.now.return_value.nanoseconds = 20_000_000_000
     monkeypatch.setattr(node, 'get_clock', lambda: clock)

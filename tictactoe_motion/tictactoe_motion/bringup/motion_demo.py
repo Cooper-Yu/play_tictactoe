@@ -1,9 +1,9 @@
 import rclpy
-from tictactoe_motion.motion_planner import MotionPlanner
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
 import math
 from std_srvs.srv import Trigger
-from tictactoe_motion.drawing_paths import cross_path, circle_path
-from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
+from tictactoe_motion.actions.drawing_paths import cross_path, circle_path
+from tictactoe_motion.pose_recording.pose_recording_demo import PoseRecordingDemo
 
 
 class MotionDemo:

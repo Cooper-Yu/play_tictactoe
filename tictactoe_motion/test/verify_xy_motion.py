@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from rclpy.utilities import remove_ros_args
 from simulation_support import SimulationHarness, write_report
-from tictactoe_motion.cartesian_planner import orientation_error, polyline_error, xyz, interpolate_joint_segment
+from tictactoe_motion.trajectory_motion.cartesian_planner import orientation_error, polyline_error, xyz, interpolate_joint_segment
 
 
 def measure(samples, poses):

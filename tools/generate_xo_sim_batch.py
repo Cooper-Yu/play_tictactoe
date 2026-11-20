@@ -35,7 +35,7 @@ def apply_mesh_color(path, color):
 REPO = Path(__file__).resolve().parents[1]
 import sys
 sys.path.insert(0, str(REPO/'tictactoe_motion'))
-from tictactoe_motion.simulated_board import write_ribbon
+from tictactoe_motion.simulation.simulated_board import write_ribbon
 
 
 def rotation(r, p, y):

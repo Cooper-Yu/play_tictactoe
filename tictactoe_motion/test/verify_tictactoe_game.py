@@ -13,10 +13,10 @@ from rclpy.utilities import remove_ros_args
 from gazebo_msgs.srv import GetModelList
 from simulation_support import SimulationHarness,write_report
 from board_scene_support import verify_scene
-from tictactoe_motion.board_canvas import BoardCanvas
-from tictactoe_motion.drawing_actions import DrawingActions
+from tictactoe_motion.canvas.board_canvas import BoardCanvas
+from tictactoe_motion.actions.drawing_actions import DrawingActions
 from tictactoe_game.tic_tac_toe import TicTacToe
-from tictactoe_motion.simulated_board import SimulatedBoard
+from tictactoe_motion.simulation.simulated_board import SimulatedBoard
 
 
 def main():

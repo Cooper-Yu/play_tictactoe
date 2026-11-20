@@ -12,9 +12,9 @@ from rclpy.parameter import Parameter
 from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
 
-from tictactoe_motion.motion_planner import MotionPlanner
-from tictactoe_motion.pose_recorder import PoseRecorder
-from tictactoe_motion.pose_recording_demo import PoseRecordingDemo
+from tictactoe_motion.trajectory_motion.trajectory_planner import MotionPlanner
+from tictactoe_motion.pose_recording.pose_recorder import PoseRecorder
+from tictactoe_motion.pose_recording.pose_recording_demo import PoseRecordingDemo
 
 
 @pytest.fixture

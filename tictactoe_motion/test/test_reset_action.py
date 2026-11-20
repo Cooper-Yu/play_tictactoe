@@ -3,7 +3,7 @@ import copy
 from types import SimpleNamespace as S
 from unittest.mock import Mock
 import pytest
-from tictactoe_motion.reset_action import ResetAction
+from tictactoe_motion.actions.reset_action import ResetAction
 
 
 def record(z):
