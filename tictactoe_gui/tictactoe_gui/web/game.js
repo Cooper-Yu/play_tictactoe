@@ -240,7 +240,7 @@ function render() {
       const nextImage = new Image();
       nextImage.onload = () => {
         if (frame !== cameraUrl) return;
-        image.src = cameraUrl;
+        image.src = gameURL(cameraUrl);
         image.hidden = false;
         get('preview').querySelector('p').hidden = true;
       };
