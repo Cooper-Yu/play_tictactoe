@@ -13,7 +13,8 @@ def start(context):
     if not 1024 <= port <= 65535:
         raise ValueError('Invalid port')
     config = Path(get_package_share_directory('tictactoe_motion'))/'config'
-    arguments = ['--environment', 'real', '--port', str(port), '--output', output]
+    arguments = ['--environment', 'real', '--port', str(port), '--output', output,
+                 '--host', LaunchConfiguration('host').perform(context)]
     return [Node(package='tictactoe_gui', executable='localization_gui', output='screen',
                  arguments=arguments,
                  parameters=[str(config/'common.yaml'), str(config/'real.yaml'),
@@ -24,5 +25,6 @@ def start(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('port', default_value='8765'),
+        DeclareLaunchArgument('host', default_value='127.0.0.1'),
         DeclareLaunchArgument('output_dir', default_value='~/ros2_ws/src/play_tictactoe/data/localization_real'),
         OpaqueFunction(function=start)])

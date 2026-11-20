@@ -328,11 +328,12 @@ def main():
     from tictactoe_gui.workbench_worker import workbench_worker
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--output', required=True)
     parser.add_argument('--environment', choices=('sim', 'real'), default='sim')
     args = parser.parse_args(remove_ros_args()[1:])
     session = WorkbenchSession(args.output, args.environment)
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(session))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(session))
     def run():
         try:
             workbench_worker(session)
@@ -344,7 +345,7 @@ def main():
         raise KeyboardInterrupt()
     signal.signal(signal.SIGINT, halt)
     signal.signal(signal.SIGTERM, halt)
-    print(f'LOCALIZATION_GUI http://localhost:{args.port} OUTPUT {session.output}', flush=True)
+    print(f'LOCALIZATION_GUI http://{args.host}:{args.port} OUTPUT {session.output}', flush=True)
     try:
         server.serve_forever(poll_interval=.1)
     except KeyboardInterrupt:
