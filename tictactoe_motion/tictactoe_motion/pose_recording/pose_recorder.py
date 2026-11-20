@@ -1,4 +1,5 @@
 from pathlib import Path
+from tictactoe_motion.pose_recording.record_names import canonical_record_name, resolve_record_name
 import copy
 import math
 import json
@@ -33,7 +34,8 @@ class PoseRecorder:
             raise ValueError("Record name must be a non-empty string")
         name = name.strip()
 
-        if name in self.poses and not overwrite:
+        previous_name = resolve_record_name(self.poses, name)
+        if previous_name in self.poses and not overwrite:
             raise ValueError(f"Record already exists: {name}")
 
         if environment not in ("sim", "real"):
@@ -123,6 +125,8 @@ class PoseRecorder:
             },
         }
 
+        if previous_name != name and previous_name in self.poses:
+            del self.poses[previous_name]
         self.poses[name] = record
 
     def save_to_file(self):
@@ -322,7 +326,7 @@ class PoseRecorder:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Record name must be a non-empty string")
 
-        name = name.strip()
+        name = resolve_record_name(self.poses, name.strip())
 
         if name not in self.poses:
             raise KeyError(f"Record does not exist: {name}")
@@ -337,7 +341,9 @@ class PoseRecorder:
         """
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Record name must be a non-empty string")
-        name = name.strip()
+        name = resolve_record_name(self.poses, name.strip())
         if name not in self.poses:
             raise KeyError(f"Record does not exist: {name}")
-        return copy.deepcopy(self.poses[name])
+        result = copy.deepcopy(self.poses[name])
+        result["name"] = canonical_record_name(result["name"])
+        return result

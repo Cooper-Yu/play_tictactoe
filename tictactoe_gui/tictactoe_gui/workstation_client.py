@@ -52,9 +52,9 @@ class Workstation:
                 (self.output/f'job-{job}.json').write_text(json.dumps(record, ensure_ascii=False, indent=2))
                 if state['state'] != 'ready' or state.get('last_stop', {}).get('job') == job:
                     raise RuntimeError(state['message'])
-                expected = {'canvas': '绘图运动完成，已抬笔；请检查实际笔迹',
-                            'preset': '操作完成', 'execute': '操作完成',
-                            'reset': 'Reset 按键动作完成，已回悬空点；请确认清屏'}
+                expected = {'canvas': 'Drawing motion completed; pen raised. Check the actual ink.',
+                            'preset': 'Operation completed', 'execute': 'Operation completed',
+                            'reset': 'Reset completed; returned to clearance pose. Confirm that the board is clear.'}
                 if state['message'] != expected[command['kind']]:
                     raise RuntimeError(state['message'])
                 if command['kind'] == 'canvas' and not state.get('drawing_result', {}).get('motion_completed'):

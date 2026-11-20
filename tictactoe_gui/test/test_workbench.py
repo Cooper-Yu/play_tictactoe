@@ -85,7 +85,7 @@ def test_http_requires_token_and_preserves_ack_result_boundary(tmp_path):
         assert session.status()['busy']
         assert session.status()['comparison'] is None
         with urlopen(base+'/') as response:
-            assert '机械臂定位工作台' in response.read().decode()
+            assert 'Robot calibration workbench' in response.read().decode()
     finally:
         server.shutdown()
         server.server_close()

@@ -9,9 +9,9 @@ class FeedbackRecovery:
     stable_duration = 2.
     max_gap = .35
     messages = {
-        'waiting': '关节反馈中断，正在等待执行结束和反馈恢复',
-        'confirmation': '可恢复，待确认。请检查笔尖和板面再重新规划',
-        'timeout': '恢复检查超时，运动保持暂停，请检查真机和反馈链路',
+        'waiting': 'Joint feedback interrupted, Waiting for execution to stop and feedback to recover',
+        'confirmation': 'Recovery available, Awaiting confirmation.Inspect the pen and board before replanning',
+        'timeout': 'Recovery verification timed out, Motion remains paused, Check the robot and feedback connection',
     }
 
     def __init__(self, now, incident):

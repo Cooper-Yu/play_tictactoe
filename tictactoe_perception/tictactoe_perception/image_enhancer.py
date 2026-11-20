@@ -25,13 +25,13 @@ class ImageEnhancer:
         """
         import cv2
         if roi is None:
-            raise ValueError('请先框选黑色书写面，避开蓝色边框')
+            raise ValueError('Select the black drawing surface first, Exclude the blue frame')
         if (isinstance(strength, bool) or not isinstance(strength, (int, float))
                 or not np.isfinite(strength) or not 0 <= strength <= 100):
-            raise ValueError('笔迹增强强度应在 0–100')
+            raise ValueError('Ink enhancement strength must be within 0–100')
         if (isinstance(tolerance, bool) or not isinstance(tolerance, (int, float))
                 or not np.isfinite(tolerance) or not 5 <= tolerance <= 45):
-            raise ValueError('颜色容差应在 5–45')
+            raise ValueError('Color tolerance must be within 5–45')
         x, y, width, height = roi
         image = raw_image[y:y+height, x:x+width]
         if not image.size or raw_image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:

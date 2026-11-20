@@ -23,9 +23,9 @@ let perceptionUrl;
 let perceptionRequest;
 let renderedPerception;
 const perceptionCaptions = {
-  rectified: '沿用相机方向做透视校正。',
-  edges: '白线显示图像中的边缘，包括棋盘线和笔迹。',
-  detections: '细线为标定格线。检测框标注 X/O 和对弈棋盘的行列；同格冲突显示 O/X。'
+  rectified: 'Perspective-corrected view aligned with the camera.',
+  edges: 'Edges of the grid and pen strokes.',
+  detections: 'Calibrated cell boundaries and YOLO detections. Labels show symbol, row and column; O/X indicates a conflicting cell.'
 };
 
 function resetPerception() {
@@ -36,7 +36,7 @@ function resetPerception() {
   perceptionImage.removeAttribute('src');
   perceptionImage.hidden = true;
   perceptionMessage.hidden = false;
-  perceptionMessage.textContent = '正在等待相机画面';
+  perceptionMessage.textContent = 'Waiting for camera image';
   get('perception-caption').textContent = perceptionCaptions[perceptionView.value];
 }
 
@@ -63,7 +63,7 @@ async function updatePerception() {
     renderedPerception = key;
   } catch (error) {
     if (!request.signal.aborted) {
-      perceptionMessage.textContent = error.message || '感知预览暂不可用';
+      perceptionMessage.textContent = error.message || 'Perception preview is temporarily unavailable';
       perceptionMessage.hidden = false;
     }
   } finally {
@@ -72,9 +72,9 @@ async function updatePerception() {
 }
 let online = false;
 const phases = {
-  preparing: '正在建立棋盘', player: '轮到你了，选一个空格画 X',
-  drawing_x: '机械臂正在画你的 X', thinking: 'AI 正在选格',
-  drawing_o: '机械臂正在画 AI 的 O', blocked: '对局暂停，请检查板面后重新开局'
+  preparing: 'Preparing board', player: 'Your turn, Select an empty cell to draw X',
+  drawing_x: 'The arm is drawing your X', thinking: 'AI is choosing a cell',
+  drawing_o: 'The arm is drawing AI of O', blocked: 'Game paused, Inspect the board before starting a new game'
 };
 const chosenMode = () => document.querySelector('input[name="size"]:checked').value;
 const selected = () => ['9', 'four', 'four-three-stone'].includes(chosenMode()) ? 9 : 3;
@@ -156,75 +156,75 @@ function render() {
     const row = Math.floor(index / size), col = index % size;
     const mark = game?.board[row][col] ?? '';
     const points = game?.weights?.[index] ?? [2,1,2,1,3,1,2,1,2][index];
-    cell.firstElementChild.textContent = showPoints ? points + ' 分' : '';
+    cell.firstElementChild.textContent = showPoints ? points + ' points' : '';
     cell.dataset.mark = mark;
     cell.dataset.winning = String(winCells.includes(index));
     cell.disabled = !playable || Boolean(mark);
-    cell.setAttribute('aria-label', '第 ' + (row+1) + ' 行，第 ' + (col+1) + ' 列，' + (mark || '空格') + (showPoints ? '，' + points + ' 分' : ''));
+    cell.setAttribute('aria-label', 'Row ' + (row+1) + ', column ' + (col+1) + ', ' + (mark || 'Empty') + (showPoints ? ', ' + points + ' points' : ''));
   });
   winLine.hidden = winCells.length === 0;
   winLine.dataset.mark = game?.winner ?? '';
   positionWinLine();
-  get('heading').textContent = ({'score': '分值井字棋', 'four': '四子棋', 'four-three-stone': '四子棋 · 三子开局', '9': '五子棋', '3': '井字棋'})[mode ?? chosenMode()];
+  get('heading').textContent = ({'score': 'Scored Tic-Tac-Toe', 'four': 'Four-in-a-Row', 'four-three-stone': 'Four-in-a-Row · Three-stone opening', '9': 'Gomoku', '3': 'Tic-Tac-Toe'})[mode ?? chosenMode()];
   const human = game?.human ?? get('mark').value;
-  get('roles').textContent = '你执 ' + human + ' · AI 执 ' + (human === 'X' ? 'O' : 'X');
-  get('connection').textContent = ready ? (realEnvironment ? '真机已连接' : 'Gazebo 已连接')
-    : (online ? (realEnvironment ? '等待真机反馈或相机' : '仿真尚未就绪') : '连接已断开');
+  get('roles').textContent = 'You play ' + human + ' · AI plays ' + (human === 'X' ? 'O' : 'X');
+  get('connection').textContent = ready ? (realEnvironment ? 'Robot connected' : 'Gazebo connected')
+    : (online ? (realEnvironment ? 'Waiting for robot feedback or camera' : 'Simulation is not ready') : 'Disconnected');
   if (realEnvironment) {
-    get('camera-heading').textContent = state?.frame_source === 'saved' ? '已保存的真机画面' : '真机相机';
+    get('camera-heading').textContent = state?.frame_source === 'saved' ? 'Saved robot camera image' : 'Robot camera';
   }
   const observed = state?.vision;
   get('vision-status').textContent = observed
-    ? '相机帧 ' + observed.sequence + ' · 新落子一致 ' + observed.consecutive + ' / 3'
-      + (observed.confirmed ? ' · 已确认第 ' + (observed.confirmed[0]+1) + ' 行第 ' + (observed.confirmed[1]+1) + ' 列 ' + observed.confirmed[2] : '')
-    : (realEnvironment ? (state?.frame_source === 'saved' ? '已保存棋局的 YOLO 识别结果，等待实时连接' : '连续三帧确认后更新左侧棋盘') : '');
+    ? 'Camera frame ' + observed.sequence + ' · New mark consistency ' + observed.consecutive + ' / 3'
+      + (observed.confirmed ? ' · Confirmed row ' + (observed.confirmed[0]+1) + ', column ' + (observed.confirmed[1]+1) + ': ' + observed.confirmed[2] : '')
+    : (realEnvironment ? (state?.frame_source === 'saved' ? 'Saved YOLO detections. Waiting for a live connection.' : 'Update the board after three consistent camera frames') : '');
   start.disabled = !ready || busy;
-  start.textContent = game ? '重新开局' : '开局';
+  start.textContent = game ? 'New game' : 'Start game';
   stop.disabled = !online || !state?.busy;
   reset.disabled = !ready || busy || !game;
   const points = get('points');
   points.hidden = !showPoints;
   const playerScore = game?.current_score?.player ?? {points: 0, lines: 0};
   const aiScore = game?.current_score?.ai ?? {points: 0, lines: 0};
-  get('score-round').textContent = '第 ' + (game?.round ?? 1) + ' / 2 局';
+  get('score-round').textContent = 'Round ' + (game?.round ?? 1) + ' / 2';
   get('score-player').textContent = String(playerScore.points);
   get('score-ai').textContent = String(aiScore.points);
-  get('score-total').textContent = '已结算 玩家 ' + (game?.totals?.player?.points ?? 0) +
-    ' 分 · AI ' + (game?.totals?.ai?.points ?? 0) + ' 分';
-  get('score-lines').textContent = '本局连线 玩家 ' + playerScore.lines + ' · AI ' + aiScore.lines;
+  get('score-total').textContent = 'Settled score Player ' + (game?.totals?.player?.points ?? 0) +
+    ' points · AI ' + (game?.totals?.ai?.points ?? 0) + ' points';
+  get('score-lines').textContent = 'Lines this round Player ' + playerScore.lines + ' · AI ' + aiScore.lines;
   const next = get('next');
   next.hidden = game?.phase !== 'between_rounds';
   next.disabled = !ready || busy;
-  next.textContent = game?.first === 'player' ? '开始第二局 · AI 先手' : '开始第二局 · 玩家先手';
+  next.textContent = game?.first === 'player' ? 'Start round two · AI moves first' : 'Start round two · Player moves first';
   let outcome;
   if (game?.mode === 'score') {
     if (game.match_winner) {
-      const reason = {points: '总分决胜', lines: '累计连线数决胜', coin: '总分和连线数相同，由随机决胜'};
-      outcome = (game.match_winner === 'player' ? '你赢得比赛' : 'AI 赢得比赛') +
+      const reason = {points: 'Winner determined by total points', lines: 'Winner determined by total line count', coin: 'Total points and line counts are tied, Random tiebreaker'};
+      outcome = (game.match_winner === 'player' ? 'You win the match' : 'AI wins the match') +
         ' · ' + reason[game.decided_by];
     } else if (game.phase === 'between_rounds') {
-      outcome = '第一局结算 · 你 ' + playerScore.points + ' 分，AI ' + aiScore.points + ' 分';
+      outcome = 'Round 1 score · You ' + playerScore.points + ' points, AI ' + aiScore.points + ' points';
     }
   } else {
-    outcome = game?.winner === 'draw' ? '平局' : game?.winner && (game.winner === game.human ? '你赢了' : 'AI 获胜');
+    outcome = game?.winner === 'draw' ? 'Draw' : game?.winner && (game.winner === game.human ? 'You win' : 'AI wins');
   }
 
   const result = get('result');
   result.hidden = !outcome;
   result.textContent = outcome || '';
   result.dataset.outcome = game?.mode === 'score' ? (game.match_winner === 'player' ? 'X' : game.match_winner === 'ai' ? 'O' : 'draw') : game?.winner ?? '';
-  let message = state?.message ?? '正在连接本地仿真…';
+  let message = state?.message ?? 'Connecting to local simulation…';
   if (busy && game && ['drawing_x','thinking','drawing_o'].includes(game.phase)) {
     const mark = game.phase === 'drawing_x' ? 'X' : 'O';
-    const action = game.phase === 'thinking' ? 'AI 正在选格' :
-      '机械臂正在画' + (human === mark ? '你的 ' : ' AI 的 ') + mark;
+    const action = game.phase === 'thinking' ? 'AI is choosing a cell' :
+      'The arm is drawing ' + (human === mark ? 'your ' : 'AI mark ') + mark;
     message = action + ' · ' + message;
   } else if (!busy && game) {
-    if (game.phase === 'between_rounds') message = '下一局交换先手，你仍执 ' + human;
+    if (game.phase === 'between_rounds') message = 'The first player changes next round, You still play ' + human;
     else if (game.phase === 'player') message = vision
-      ? '选一个空格模拟书写 ' + human + '，相机识别稳定后自动提交'
-      : '轮到你了，选一个空格画 ' + human;
-    else message = outcome ? '本局结束，可以重新开局' : phases[game.phase] || message;
+      ? 'Select an empty cell for proxy drawing ' + human + ', Submit automatically after stable camera recognition'
+      : 'Your turn, Select an empty cell to draw ' + human;
+    else message = outcome ? 'Game finished. Start a new game' : phases[game.phase] || message;
   }
   get('status').textContent = notice || message;
   const cameraUrl = state?.camera_sequence
@@ -251,25 +251,25 @@ function render() {
 async function refresh() {
   if (!token) {
     const response = await fetch('/api/config', {signal: AbortSignal.timeout(2500)});
-    if (!response.ok) throw Error('配置读取失败');
+    if (!response.ok) throw Error('Could not read configuration');
     const config = await response.json();
     token = config.token;
     visionAvailable = config.vision_available === true;
     realEnvironment = config.environment === 'real';
     document.body.dataset.environment = config.environment;
     if (realEnvironment) {
-      get('camera-heading').textContent = '真机相机';
-      image.alt = '真实平板与机械臂画面';
-      get('preview').querySelector('p').textContent = '正在等待真机相机画面';
+      get('camera-heading').textContent = 'Robot camera';
+      image.alt = 'Real tablet and robot arm';
+      get('preview').querySelector('p').textContent = 'Waiting for robot camera image';
       perception.open = true;
       perceptionView.value = 'detections';
       get('input-source').value = 'vision';
       get('input-source').querySelector('[value=click]').disabled = true;
-      get('input-source').querySelector('[value=vision]').textContent = '机械臂代写 · 相机确认';
+      get('input-source').querySelector('[value=vision]').textContent = 'Robot proxy drawing · Camera confirmation';
       document.querySelectorAll('input[name=size]').forEach(input => {
         if (input.value !== '3') input.closest('label').hidden = true;
       });
-      get('canvas-link').textContent = '定位工作台';
+      get('canvas-link').textContent = 'Calibration workbench';
       get('canvas-link').href = config.workstation_url;
       board.style.aspectRatio = config.width_mm + '/' + config.height_mm;
     }
@@ -280,7 +280,7 @@ async function refresh() {
     }
   }
   const response = await fetch('/api/status', {signal: AbortSignal.timeout(2500)});
-  if (!response.ok) throw Error('状态读取失败');
+  if (!response.ok) throw Error('Could not read status');
   state = await response.json();
   online = true;
 }
@@ -294,7 +294,7 @@ async function act(path, data) {
     const response = await fetch(path, {method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Canvas-Token': token},
       body: JSON.stringify(data), signal: AbortSignal.timeout(3500)});
-    if (!response.ok) throw Error((await response.json()).error || '请求失败');
+    if (!response.ok) throw Error((await response.json()).error || 'Request failed');
     await refresh();
   } catch (error) {
     notice = error.message;
@@ -316,7 +316,7 @@ perception.addEventListener('toggle', resetPerception);
 perceptionView.addEventListener('change', resetPerception);
 setInterval(updatePerception, 850);
 start.addEventListener('click', () => {
-  if (!state?.game || window.confirm('清空当前对局并重新开局？')) {
+  if (!state?.game || window.confirm('Clear the current board and start a new game？')) {
     act('/api/game/start', {size: selected(), mode: ['score', 'four', 'four-three-stone'].includes(chosenMode()) ? chosenMode() : 'classic',
       first: get('first').value, mark: get('mark').value,
       input_source: visionAvailable && chosenMode() === '3' ? get('input-source').value : 'click'});

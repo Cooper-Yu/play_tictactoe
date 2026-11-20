@@ -11,7 +11,7 @@ def load_illustration(name, width=.06, *, board_width=.144, board_height=.193, f
     simulation illustration mapping after prepare_strokes is applied.
     """
     if name not in ('chair', 'docker', 'smile'):
-        raise ValueError('未知素材')
+        raise ValueError('Unknown asset')
     asset=json.loads(files('tictactoe_motion.canvas').joinpath('illustrations',name+'.json').read_text())
     strokes=[[[.5+(u-.5)*width/(board_width-.002),
                .5+(v-.5)*(width/asset['aspect'])/(board_height-.002)] for u,v in stroke]
@@ -23,20 +23,20 @@ def load_illustration(name, width=.06, *, board_width=.144, board_height=.193, f
 def validate_strokes(strokes):
     """! @brief Copy bounded normalized input without choosing a robot mapping."""
     if not isinstance(strokes, list) or not 1 <= len(strokes) <= 32:
-        raise ValueError('需要 1–32 笔')
+        raise ValueError('requires 1–32 strokes')
     if sum(len(s) if isinstance(s, list) else 10001 for s in strokes) > 8000:
-        raise ValueError('总采样点不能超过 8000')
+        raise ValueError('Total sample count must not exceed 8000')
     result = []
     for number, stroke in enumerate(strokes, 1):
         if not isinstance(stroke, list) or not 2 <= len(stroke) <= 2000:
-            raise ValueError(f'第 {number} 笔需要 2–2000 个点')
+            raise ValueError(f'Stroke {number} requires 2–2000 points')
         row = []
         for point in stroke:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
-                raise ValueError('每个点必须包含 x、y')
+                raise ValueError('Each point must contain x, y')
             if any(isinstance(v, bool) or not isinstance(v, (int, float))
                    or not math.isfinite(v) or not 0 <= v <= 1 for v in point):
-                raise ValueError('坐标必须在画布内 [0,1]')
+                raise ValueError('Coordinates must be within the canvas [0,1]')
             row.append([float(v) for v in point])
         result.append(row)
     return result
@@ -55,7 +55,7 @@ def prepare_strokes(strokes, width=.144, height=.193, *, flip=True):
     if (any(isinstance(v, bool) or not isinstance(v, (int, float))
             or not math.isfinite(v) or v <= .002 for v in (width, height))
             or not isinstance(flip, bool)):
-        raise ValueError('无效画布尺寸或方向')
+        raise ValueError('Invalid canvas dimensions or orientation')
     result = []
     for number, stroke in enumerate(strokes, 1):
         points = []
@@ -74,7 +74,7 @@ def prepare_strokes(strokes, width=.144, height=.193, *, flip=True):
                                 previous[1]+(mapped[1]-previous[1])*i/count]
                                for i in range(1, count+1)])
         if len(points) < 2:
-            raise ValueError(f'第 {number} 笔太短，请画线而非单击')
+            raise ValueError(f'Stroke {number} is too short, Draw a line instead of clicking')
         part, length, part_number = [points[0]], 0.0, 1
         for point in points[1:]:
             distance = metric_distance(part[-1], point, width, height)
@@ -92,7 +92,7 @@ def prepare_strokes(strokes, width=.144, height=.193, *, flip=True):
         if len(part) > 1:
             result.append({'stroke': number, 'part': part_number, 'points': part})
     if len(result) > 256:
-        raise ValueError('轨迹过于复杂，请分多次执行')
+        raise ValueError('Trajectory is too complex, Split this into separate executions')
     return result
 
 

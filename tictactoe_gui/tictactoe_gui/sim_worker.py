@@ -148,7 +148,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
             accepted_frames = []
             for _ in range(12):
                 if session.stop.is_set():
-                    raise RuntimeError("任务已停止")
+                    raise RuntimeError("Task stopped")
                 # Sample the live camera only after the arm has returned to zero.
                 ready_at = time.monotonic() + .20
                 driver.until(lambda: time.monotonic() >= ready_at, 3)
@@ -157,7 +157,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                 raw = bridge.imgmsg_to_cv2(frame["message"], "bgr8")
                 ok, encoded = cv2.imencode(".png", raw)
                 if not ok:
-                    raise RuntimeError("相机图像编码失败")
+                    raise RuntimeError("Camera image encoding failed")
                 cells = perception.detect_cells(encoded.tobytes())
                 sequence = frame["sequence"]
                 accepted_frames.append(dict(
@@ -167,9 +167,9 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                 found = gate.observe(sequence, cells)
                 if found is not None:
                     return found, accepted_frames
-            raise RuntimeError("相机未确认唯一的新棋子，请检查板面后重新开局")
+            raise RuntimeError("Camera did not confirm one unique new mark, Inspect the board before starting a new game")
 
-        session.update(state='ready', message='仿真已连接，可以绘制', busy=False)
+        session.update(state='ready', message='Simulation connected, ready to draw', busy=False)
         parked_over_board = False
 
         def fresh_pose_available():
@@ -193,7 +193,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
             evidence = copy.deepcopy(job)
             try:
                 if driver.execution.is_executing or driver.execution.stop.blocked:
-                    raise RuntimeError('停稳尚未确认，拒绝新运动')
+                    raise RuntimeError('Settling is not confirmed, Rejecting new motion')
                 driver.preflight();verify_scene(profile)
                 if fast_game:
                     # Scene verification can block spinning long enough to age feedback.
@@ -203,10 +203,10 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                              upper_z=profile['hover_link6_z_m'],
                              depth=profile['hover_link6_z_m']-profile['drawing_link6_z_m'], snap=False))
                             for part in job['prepared']]
-                session.update(state='running', message='前往悬空起点')
+                session.update(state='running', message='Move above the stroke start')
                 kind = job['kind']
                 if session.stop.is_set():
-                    raise RuntimeError('任务已停止')
+                    raise RuntimeError('Task stopped')
                 request = job['game_request'] or {}
                 opening_motion = (kind == 'game_start' and
                                   (request.get('first') == 'ai' or request.get('mode') == THREE_STONE_MODE)
@@ -233,17 +233,17 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                     baseline = session.status()['game']['board']
                     center = game.game.cell_center(request['row'], request['col'])
                     mark = game.player_mark
-                    session.update(message=f'正在模拟玩家写 {mark}')
+                    session.update(message=f'Drawing the proxy player mark {mark}')
                     if mark == 'X':
                         actions.draw_x(center, game.game.cell_size*.55, cancelled=session.stop.is_set)
                     else:
                         actions.draw_o(center, game.game.cell_size*.25, cancelled=session.stop.is_set)
                     driver.named('zero')
-                    session.update(message='等待相机确认新落子')
+                    session.update(message='Waiting for camera confirmation of the new mark')
                     found, frames = read_player_mark(baseline)
                     evidence.update(observed_move=found, observations=frames)
                     if session.stop.is_set():
-                        raise RuntimeError('任务已停止')
+                        raise RuntimeError('Task stopped')
                     # The only player move submitted to the coordinator is the camera result.
                     driver.named('clear')
                     game.register_observed_move(*found, job['job'])
@@ -257,7 +257,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                     lower = copy.deepcopy(target.position);lower.z = profile['drawing_link6_z_m']
                     driver.linear(lower)
                     if not renderer.press_reset(driver.results[-1]['samples']):
-                        raise RuntimeError('未确认仿真Reset动作')
+                        raise RuntimeError('Simulation action not confirmed Reset Action')
                     driver.linear(target.position)
                     game.game = None
                     session.update(game=None, game_frame=None)
@@ -268,8 +268,8 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                             with session.lock:
                                 session.state['events'].append(event)
                                 session.state.update(stroke=part['stroke'], stage=name,
-                                    message=f"第 {part['stroke']} / {session.state['total']} 笔 · 第 {part['part']} 段 · "+
-                                    {'approach':'移动到起点','lower':'落笔','draw':'绘制','lift':'抬笔','transfer':'移笔'}.get(name.split('_')[-1],name))
+                                    message=f"Stroke {part['stroke']} / {session.state['total']} · segment {part['part']} · "+
+                                    {'approach':'Move to stroke start','lower':'Pen down','draw':'Draw','lift':'Pen up','transfer':'Pen transfer'}.get(name.split('_')[-1],name))
                         drawing.run(driver, cancelled=session.stop.is_set, on_stage=stage)
                         if index+1 == len(segments) or segments[index+1][0]['stroke'] != part['stroke']:
                             session.update(completed=part['stroke'])
@@ -280,7 +280,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                             abs(driver.current_pose().position.z - canvas.profile['hover_link6_z_m'])
                             <= driver.node.settings['return_position_tolerance'])
                 if (needs_motion or reuse_hover) and not parked_over_board:
-                    session.update(message='已抬笔，正在回到 zero')
+                    session.update(message='Pen raised, Returning to zero')
                     driver.named('zero')
                 # Capture camera evidence after the final motion of the job.
                 # Allow the sensor to render the just-spawned grid before saving evidence.
@@ -294,10 +294,10 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                     session.update(game_frame=job['job'])
                     evidence['game'] = session.status()['game']
                 evidence.update(passed=True, events=session.status()['events'])
-                messages = {'draw': '绘制完成，已回到 zero', 'reset': '平板已清空，已回到 zero',
-                            'game_start': '棋盘就绪，请落子', 'game_move': '本轮绘制完成',
-                            'game_next': '第二局已开始，轮到你了',
-                            'game_vision_move': '相机已确认玩家落子，本轮完成'}
+                messages = {'draw': 'Drawing completed, Returned to zero', 'reset': 'Tablet cleared, Returned to zero',
+                            'game_start': 'Board ready, Place a mark', 'game_move': 'Drawing round completed',
+                            'game_next': 'Round two started, Your turn',
+                            'game_vision_move': 'Camera confirmed the player move, Round completed'}
                 session.update(state='done', message=messages[kind])
             except BaseException as error:
                 parked_over_board = False
@@ -312,7 +312,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                         pass
                 blocked = driver.execution.is_executing or driver.execution.stop.blocked
                 state = 'blocked' if blocked else 'stopped' if session.stop.is_set() else 'failed'
-                message='已停止，剩余笔画未执行' if state=='stopped' else '执行检查失败，任务已停止；请查看运行日志'
+                message='Stopped, Remaining strokes were not executed' if state=='stopped' else 'Execution verification failed, Task stopped; Check the runtime log'
                 print('CANVAS_JOB_FAILED',repr(error),flush=True)
                 session.update(state=state, message=message)
             finally:

@@ -69,19 +69,19 @@ class GameCoordinator:
 
     def start(self, size, revision, *, mode="classic", first="player", mark="X", input_source="click"):
         if not isinstance(mode, str) or (mode, size) not in WIN_LENGTHS:
-            raise ValueError("无效游戏模式或棋盘尺寸")
+            raise ValueError("Invalid game mode or board size")
         if mode == "classic" and size == 9:
             engine = os.getenv("TICTACTOE_RAPFI")
             if not engine or not Path(engine).expanduser().is_file() or not os.access(
                 Path(engine).expanduser(), os.X_OK
             ):
-                raise RuntimeError("请先设置可执行的 TICTACTOE_RAPFI")
+                raise RuntimeError("Configure an executable first TICTACTOE_RAPFI")
         if first not in ("player", "ai") or mark not in ("X", "O"):
-            raise ValueError("无效的先后手或符号")
+            raise ValueError("Invalid turn order or symbol")
         if input_source not in ("click", "vision") or (
             input_source == "vision" and (mode != "classic" or size != 3)
         ):
-            raise ValueError("视觉落子仅支持普通 3×3 井字棋")
+            raise ValueError("Visual moves support only classic 3×3 Tic-Tac-Toe")
         self.input_source = input_source
         self.mode = mode
         self.human = mark if mode == THREE_STONE_MODE else ("X" if first == "player" else "O")
@@ -120,7 +120,7 @@ class GameCoordinator:
     def next_round(self, revision):
         if (self.mode != "score" or self.game is None
                 or self.game.phase != "finished" or len(self.rounds) != 1):
-            raise ValueError("当前无法进入第二局")
+            raise ValueError("Cannot start round two now")
         self.human = "O" if self.human == "X" else "X"
         self.round_number = 2
         self._open_round(3, revision)
@@ -132,12 +132,12 @@ class GameCoordinator:
 
     def _check_cancelled(self):
         if self.cancelled():
-            raise RuntimeError("当前动作已停止")
+            raise RuntimeError("Current action stopped")
 
     def _options(self):
         return dict(cancelled=self.cancelled, on_stage=lambda stage: self.publish(
-            message={"lower": "落笔", "draw": "绘制", "lift": "抬笔", "transfer": "移笔"}.get(
-                stage.rsplit("_", 1)[-1], "移动到落子位置")))
+            message={"lower": "Pen down", "draw": "Draw", "lift": "Pen up", "transfer": "Pen transfer"}.get(
+                stage.rsplit("_", 1)[-1], "Move to mark position")))
 
     def _ai_turn(self, revision):
         self._check_cancelled()
@@ -148,7 +148,7 @@ class GameCoordinator:
             target = self.game.suggest_move()
         self._check_cancelled()
         if target is None:
-            raise RuntimeError("AI 回合未完成")
+            raise RuntimeError("AI turn did not finish")
         mark = self.game.turn
         self._update("drawing_" + self._mark(mark).lower(), revision)
         self.game.play(mark, *target, **self._options())
@@ -175,18 +175,18 @@ class GameCoordinator:
     def register_observed_move(self, row, col, mark, revision):
         '''Register an already-drawn player mark in the 3x3 vision pilot.'''
         if self.game is None or self.mode != "classic" or self.game.rows != 3:
-            raise ValueError("视觉落子试验仅支持普通 3×3 井字棋")
+            raise ValueError("Visual move pilot supports only classic 3×3 Tic-Tac-Toe")
         if mark != self.player_mark:
-            raise ValueError("识别到的符号与玩家符号不一致")
+            raise ValueError("Detected symbol does not match the player symbol")
         self._player_move(row, col, revision, observed=True)
 
     def _player_move(self, row, col, revision, *, observed):
         game = self.game
         if game is None or game.phase != "playing" or game.turn != self.human:
-            raise ValueError("当前无法落子")
+            raise ValueError("Cannot place a mark now")
         game.cell_center(row, col)
         if game.board[row*game.columns+col]:
-            raise ValueError("该格已经落子")
+            raise ValueError("This cell is occupied")
         try:
             self._check_cancelled()
             if observed:

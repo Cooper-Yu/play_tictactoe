@@ -42,9 +42,9 @@ class PerceptionPreview:
 
     def render(self, image, sequence, size, view):
         if view not in _VIEWS:
-            raise ValueError("未知预览模式")
+            raise ValueError("Unknown preview mode")
         if size not in (3, 9):
-            raise ValueError("不支持的棋盘大小")
+            raise ValueError("Unsupported board size")
         if not self.lock.acquire(blocking=False):
             return None
         try:
@@ -63,7 +63,7 @@ class PerceptionPreview:
                 output = rectified
             ok, encoded = cv2.imencode(".jpg", output)
             if not ok:
-                raise RuntimeError("无法生成预览图像")
+                raise RuntimeError("Could not generate preview image")
             result = encoded.tobytes()
             self.cache[view] = (key, result)
             return result
@@ -74,16 +74,16 @@ class PerceptionPreview:
     def _camera_frame(image):
         raw = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_COLOR)
         if raw is None:
-            raise RuntimeError("相机图像解码失败")
+            raise RuntimeError("Camera image decoding failed")
         height, width = raw.shape[:2]
         if abs(width / height - 16 / 9) > .02:
-            raise RuntimeError("图像尺寸与当前仿真相机标定不匹配")
+            raise RuntimeError("Image resolution does not match the simulation camera calibration")
         return raw, board_transform(width, height)
 
     def detect_cells(self, image, size=3):
         """Return all detected mark classes per cell, including conflicts."""
         if size not in (3, 9):
-            raise ValueError("不支持的棋盘大小")
+            raise ValueError("Unsupported board size")
         with self.lock:
             raw, transform = self._camera_frame(image)
             return {cell: frozenset(candidates)
@@ -92,7 +92,7 @@ class PerceptionPreview:
     def _detect(self, raw, transform, size):
         if self.model is None:
             if self.weights is None or not self.weights.is_file():
-                raise RuntimeError("尚未配置 YOLO 权重")
+                raise RuntimeError("Not configured YOLO Weights")
             from ultralytics import YOLO
             self.model = YOLO(str(self.weights))
         # Keep the original perspective for inference. Each zone owns only its

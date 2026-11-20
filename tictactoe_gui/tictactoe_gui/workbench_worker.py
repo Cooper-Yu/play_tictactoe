@@ -71,7 +71,7 @@ def workbench_worker(session):
     def switch_camera(topic):
         topics = dict(driver.client.get_topic_names_and_types())
         if 'sensor_msgs/msg/Image' not in topics.get(topic, []):
-            raise ValueError('所选 topic 尚未发布 sensor_msgs/msg/Image')
+            raise ValueError('Selected topic Not published sensor_msgs/msg/Image')
         if camera['subscription'] is not None:
             driver.client.destroy_subscription(camera['subscription'])
         history.clear()
@@ -80,6 +80,8 @@ def workbench_worker(session):
         camera.update(topic=topic, received=None, sequence=0, width=0, height=0, error=None, period_s=None)
         camera['subscription'] = driver.client.create_subscription(
             Image, topic, image_received, qos_profile_sensor_data)
+
+    from tictactoe_motion.pose_recording.record_names import canonical_record_name
 
     def refresh_records():
         driver.recording._reload()
@@ -90,9 +92,15 @@ def workbench_worker(session):
                 path = (session.output/'screenshots'/shot['file']).resolve()
                 if path.is_file() and path.parent == session.output/'screenshots':
                     with session.lock:
-                        session.frames['record:'+name] = path.read_bytes()
+                        session.frames['record:'+canonical_record_name(name)] = path.read_bytes()
                     record['screenshot'] = shot
-        session.update(records=records)
+        displayed = {}
+        for name, record in records.items():
+            display_name = canonical_record_name(name)
+            record["name"] = display_name
+            if display_name not in displayed or name == display_name:
+                displayed[display_name] = record
+        session.update(records=displayed)
 
     def tick():
         now = time.monotonic()
@@ -107,8 +115,8 @@ def workbench_worker(session):
             print('WORKBENCH_FEEDBACK_STALE '+json.dumps(timing), flush=True)
             received = driver.node.last_joint_state_received
             age = now-received if received is not None else None
-            session.request_stop('执行中关节反馈过期：age='+str(age)
-                                 +'s，limit='+str(driver.node.settings['feedback_max_age'])+'s',
+            session.request_stop('Joint feedback became stale during execution: age='+str(age)
+                                 +'s, limit='+str(driver.node.settings['feedback_max_age'])+'s',
                                  source='feedback_guard')
         if session.stop.is_set() and not stopping['handled']:
             stopping['handled'] = True
@@ -174,7 +182,7 @@ def workbench_worker(session):
     def wait_plan():
         driver.until(lambda: not driver.node.is_planning, 25)
         if session.stop.is_set():
-            raise RuntimeError('操作已停止，规划已清除')
+            raise RuntimeError('Operation stopped, Plan cleared')
         return driver.guard(2.)
 
     def perform(command):
@@ -182,27 +190,27 @@ def workbench_worker(session):
         if session.environment == 'real' and kind in ('jog', 'preset', 'return', 'execute', 'reset', 'draw', 'canvas'):
             driver.preflight()
         if not driver.node.feedback_is_fresh():
-            raise RuntimeError('关节反馈已过期')
+            raise RuntimeError('Joint feedback is stale')
         if driver.execution.is_executing or driver.execution.stop.blocked:
-            raise RuntimeError('运动尚未停稳')
+            raise RuntimeError('Motion has not settled')
         if kind in ('jog', 'preset', 'return'):
             driver.node.invalidate_plan()
             session.update(plan=None)
             driver.parameters(velocity_scaling=command['speed'], acceleration_scaling=command['speed'])
         if kind == 'jog':
-            session.update(message='正在规划小步移动')
+            session.update(message='Planning jog')
             target = copy.deepcopy(driver.current_pose())
             setattr(target.position, command['axis'], getattr(target.position, command['axis'])+command['distance'])
             if not driver.node.cartesian_planner.request_linear_position(target.position):
-                raise RuntimeError('小步移动规划请求被拒绝')
+                raise RuntimeError('Jog planning request rejected')
             wait_plan()
-            session.update(message='正在执行小步移动并等待停稳')
+            session.update(message='Executing jog and waiting for settling')
             comparison = driver.verified_pose_result(driver.execute())
             session.update(comparison=comparison, plan=None)
         elif kind == 'preset':
             joints, target = driver.named_target(command['name'])
             if not driver.node.request_joint_plan(joints, target, command['name']):
-                raise RuntimeError('预设规划被拒绝')
+                raise RuntimeError('Preset planning rejected')
             summary = wait_plan()
             session.update(plan=dict(label=command['name'], **summary))
         elif kind == 'return':
@@ -210,15 +218,15 @@ def workbench_worker(session):
             driver.call('load_pose')
             driver.call('plan_return')
             summary = wait_plan()
-            session.update(plan=dict(label='返回 '+command['name'], **summary))
+            session.update(plan=dict(label='Return '+command['name'], **summary))
         elif kind == 'execute':
             if driver.node.planned_trajectory is None:
-                raise RuntimeError('规划已失效，请重新规划')
-            session.update(plan=None, message='执行轨迹并核对停稳结果')
+                raise RuntimeError('Plan is no longer valid, Replan')
+            session.update(plan=None, message='Execute trajectory and verify settling')
             result = driver.execute()
             session.update(comparison=result)
             if not result.get('passed', False):
-                raise RuntimeError('实际位姿核对未通过：'+str(result))
+                raise RuntimeError('Actual pose verification failed: '+str(result))
         elif kind == 'reset':
             from tictactoe_motion.actions.reset_action import ResetAction
             driver.node.invalidate_plan()
@@ -248,7 +256,7 @@ def workbench_worker(session):
                 strokes = illustration.strokes(command['shape'], center=center, width=size)
                 skip = command['skip_strokes']
                 if skip >= len(strokes):
-                    raise ValueError('续画笔画索引超出素材范围')
+                    raise ValueError('Resume stroke index is outside the illustration')
                 drawings = illustration._batches(strokes[skip:])
             else:
                 if command['shape'] == 'x':
@@ -265,7 +273,7 @@ def workbench_worker(session):
             stages = []
             for index, drawing in enumerate(drawings, 1):
                 def on_stage(stage):
-                    session.update(message='绘图：'+stage,
+                    session.update(message='Drawing: '+stage,
                                    drawing_progress=dict(shape=command['shape'], batch=index,
                                                          batches=len(drawings), stage=stage,
                                                          completed_batches=index-1,
@@ -278,7 +286,7 @@ def workbench_worker(session):
         elif kind == 'canvas':
             from tictactoe_gui.canvas_action import CanvasAction
             if real_canvas is None or command['speed'] > real_canvas.profile['max_velocity_scaling']:
-                raise ValueError('真机画布标定或速度不符合配置')
+                raise ValueError('Real canvas calibration or speed does not match the profile')
             action = CanvasAction(real_canvas, command['strokes'])
             driver.node.invalidate_plan()
             session.update(plan=None, drawing_result=None, drawing_progress=None)
@@ -289,7 +297,7 @@ def workbench_worker(session):
             directory.mkdir(exist_ok=True)
             destination = directory/(str(time.time_ns())+'-job-'+str(session.status()['job'])+'.json')
             def progress(value):
-                session.update(message=f'画布：第 {value["source_stroke"]}/{action.input_count} 笔 · '+value['stage'],
+                session.update(message=f'Canvas: Stroke {value["source_stroke"]}/{action.input_count} · '+value['stage'],
                                drawing_progress=value)
             try:
                 result = action.run(driver, cancelled=session.stop.is_set, on_stage=progress)
@@ -304,7 +312,7 @@ def workbench_worker(session):
             driver.until(lambda: camera['received'] is not None and time.monotonic()-camera['received'] < 2., 8)
             driver.parameters(record_name=command['name'], overwrite=command['overwrite'])
             matched_shot['frame'] = None
-            session.update(plan=None, message='等待停稳并同步记录关节、TF 与截图')
+            session.update(plan=None, message='Wait for settling and record joints, TF and screenshot')
             driver.call('record_pose')
             driver.until(lambda: driver.recording.last_status.get('state') in ('saved', 'failed', 'canceled'), 10)
             if driver.recording.last_status['state'] != 'saved':
@@ -315,7 +323,7 @@ def workbench_worker(session):
             match = matched_shot['frame']
             if match is None or abs(match[0]-value) > .5:
                 refresh_records()
-                raise RuntimeError('位姿已保存，但没有时间差小于 0.5 秒的截图，请检查相机时间源')
+                raise RuntimeError('Pose saved, but no screenshot was found within 0.5 seconds of the pose timestamp, Check the camera time source')
             directory = session.output/'screenshots'
             directory.mkdir(exist_ok=True)
             name = hashlib.sha256((command['name']+json.dumps(stamp)).encode()).hexdigest()+'.jpg'
@@ -348,7 +356,7 @@ def workbench_worker(session):
                     driver.preflight()
                     break
                 except (ValueError, RuntimeError, TimeoutError) as error:
-                    session.update(state='connecting', message='等待真机接口：'+str(error))
+                    session.update(state='connecting', message='Waiting for robot interfaces: '+str(error))
                     until = time.monotonic()+.5
                     driver.until(lambda: session.shutdown.is_set() or time.monotonic() >= until, 1.)
             if session.shutdown.is_set():
@@ -361,7 +369,7 @@ def workbench_worker(session):
             if 'sensor_msgs/msg/Image' in topics.get(topic, []):
                 switch_camera(topic)
                 break
-        session.update(state='ready', message=('真机' if session.environment == 'real' else '仿真')+'已连接；启动不会移动机械臂')
+        session.update(state='ready', message=('Robot' if session.environment == 'real' else 'Simulation')+'connected; Startup does not move the arm')
         while not session.shutdown.is_set():
             driver.executor.spin_once(timeout_sec=.02)
             if session.stop.is_set() and stopping['handled']:
@@ -382,11 +390,11 @@ def workbench_worker(session):
                 session.active_operation = command['kind']
                 if command['kind'] in ('draw', 'canvas', 'reset'):
                     session.update(drawing_progress=None)
-                session.update(state='running', message='正在处理 '+command['kind'])
+                session.update(state='running', message='Processing '+command['kind'])
                 if session.stop.is_set():
-                    raise RuntimeError('操作已取消')
+                    raise RuntimeError('Operation cancelled')
                 perform(command)
-                session.update(state='ready', busy=False, message=('Reset 按键动作完成，已回悬空点；请确认清屏' if command['kind'] == 'reset' else '绘图运动完成，已抬笔；请检查实际笔迹' if command['kind'] in ('draw', 'canvas') else '操作完成'))
+                session.update(state='ready', busy=False, message=('Reset completed; returned to clearance pose. Confirm that the board is clear.' if command['kind'] == 'reset' else 'Drawing motion completed; pen raised. Check the actual ink.' if command['kind'] in ('draw', 'canvas') else 'Operation completed'))
             except Exception as error:
                 driver.node.invalidate_plan()
                 if driver.execution.is_executing and not session.stop.is_set():

@@ -5,7 +5,7 @@ let token, state = {}, roi = null, drag = null, rawImage = null, selected = 'Res
 let lastSequence = -1, lastTopic = '', lastRecordKey = '', requestBusy = false;
 let betaRevision = 0, renderedRevision = -1, imageBusy = false, toastTimer;
 let appliedEnvironment = null, polling = false;
-const fixedNames = ['Reset', '左上', '右上', '右下', '左下'];
+const fixedNames = ['Reset', 'Top left', 'Top right', 'Bottom right', 'Bottom left'];
 function toast(message) {
   $('toast').textContent = message; $('toast').hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => {$('toast').hidden = true;}, 4500);
@@ -13,7 +13,7 @@ function toast(message) {
 async function post(path, data) {
   const response = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json', 'X-Workbench-Token':token}, body:JSON.stringify(data), signal:AbortSignal.timeout(5000)});
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || '请求失败');
+  if (!response.ok) throw new Error(result.error || 'Request failed');
   return result;
 }
 async function command(data) {
@@ -33,7 +33,7 @@ function renderControls() {
   $('real-drawing').hidden = state.environment !== 'real';
   $('drawing-hint').hidden = state.environment !== 'real';
   $('draw').disabled = blocked || state.environment !== 'real';
-  $('reset-cycle').disabled = blocked || !state.records?.['reset悬空预备'] || !state.records?.Reset;
+  $('reset-cycle').disabled = blocked || !state.records?.['Reset hover'] || !state.records?.Reset;
   $('execute').disabled = blocked || !state.plan;
   $('return').disabled = blocked || !state.records?.[selected];
   $('delete').disabled = blocked || !state.records?.[selected];
@@ -50,22 +50,22 @@ function renderRecords() {
   const key = JSON.stringify([records, selected]);
   if (key === lastRecordKey) return;
   lastRecordKey = key; $('records').replaceChildren();
-  $('record-count').textContent = `${fixedNames.filter(name => records[name]).length} / 5 已记录`;
+  $('record-count').textContent = `${fixedNames.filter(name => records[name]).length} / 5 Recorded`;
   for (const name of names) {
     const button = document.createElement('button');
     button.className = 'record-card'+(selected === name ? ' selected' : '');
     const title = document.createElement('b'); title.textContent = name; button.append(title);
     const detail = document.createElement('small');
-    detail.textContent = records[name] ? (records[name].screenshot ? '已记录 · 已关联截图' : '已记录 · 无匹配截图') : '等待记录'; button.append(detail);
+    detail.textContent = records[name] ? (records[name].screenshot ? 'Recorded · Screenshot attached' : 'Recorded · No matching screenshot') : 'Not recorded'; button.append(detail);
     if (records[name]?.screenshot) {
-      const img = document.createElement('img'); img.alt = name+' 记录截图';
+      const img = document.createElement('img'); img.alt = name+' Recorded screenshot';
       img.src = 'api/snapshot?name='+encodeURIComponent(name)+'&v='+encodeURIComponent(JSON.stringify(records[name].pose_stamped.header.stamp)); button.append(img);
     }
     button.onclick = () => {selected=name; $('record-name').value=name; renderRecords(); renderControls();};
     $('records').append(button);
   }
   const record = records[selected];
-  $('record-detail').textContent = record ? `${selected} · X ${(record.pose_stamped.pose.position.x*1000).toFixed(2)} / Y ${(record.pose_stamped.pose.position.y*1000).toFixed(2)} / Z ${(record.pose_stamped.pose.position.z*1000).toFixed(2)} mm · base_link / link6 · joint1–joint6 已保存` : '选择一条记录查看位姿';
+  $('record-detail').textContent = record ? `${selected} · X ${(record.pose_stamped.pose.position.x*1000).toFixed(2)} / Y ${(record.pose_stamped.pose.position.y*1000).toFixed(2)} / Z ${(record.pose_stamped.pose.position.z*1000).toFixed(2)} mm · base_link / link6 · joint1–joint6 saved` : 'Select a record to view its pose';
 }
 function render() {
   const real = state.environment === 'real';
@@ -80,36 +80,36 @@ function render() {
       }));
     }
   }
-  $('environment-label').textContent='ROS 2 / MoveIt 2 · '+(real?'真机模式':'仿真模式');
-  $('status').textContent = state.message || '等待连接';
-  $('storage').textContent = state.storage ? '记录保存位置（WSL）：'+state.storage : '';
-  $('connection').textContent = state.state === 'offline' ? '工作台未连接' : state.fresh ? '● '+(real?'真机':'仿真')+'已连接' : '等待机械臂反馈';
-  $('feedback').textContent = state.fresh ? '实际反馈 · base_link → link6' : '反馈已过期 / 等待数据';
+  $('environment-label').textContent='ROS 2 / MoveIt 2 · '+(real?'Real robot mode':'Simulation mode');
+  $('status').textContent = state.message || 'Waiting for connection';
+  $('storage').textContent = state.storage ? 'Record storage(WSL): '+state.storage : '';
+  $('connection').textContent = state.state === 'offline' ? 'Workbench disconnected' : state.fresh ? '● '+(real?'Robot':'Simulation')+'connected' : 'Waiting for arm feedback';
+  $('feedback').textContent = state.fresh ? 'Actual feedback · base_link → link6' : 'Feedback is stale / Waiting for data';
   $('feedback').classList.toggle('stale', !state.fresh);
   for (const axis of ['x','y','z']) $('p'+axis).textContent = state.pose && state.fresh ? (state.pose[axis]*1000).toFixed(2) : '—';
   $('rpy').textContent = state.pose && state.fresh ? state.pose.rpy.map(v => (v*180/Math.PI).toFixed(2)+'°').join(' / ') : '—';
-  $('quaternion').textContent = state.pose ? '四元数 xyzw：'+state.pose.quaternion.map(v=>v.toFixed(5)).join(', ') : '';
+  $('quaternion').textContent = state.pose ? 'Quaternion xyzw: '+state.pose.quaternion.map(v=>v.toFixed(5)).join(', ') : '';
   $('joints').replaceChildren();
   for (let i=1;i<=6;i++) {const span=document.createElement('span'); const value=state.joints?.['joint'+i]; span.textContent=`J${i}　${state.fresh && Number.isFinite(value) ? (value*180/Math.PI).toFixed(2)+'°' : '—'}`; $('joints').append(span);}
-  $('plan-label').textContent = state.plan ? `${state.plan.label} · ${state.plan.points} 点 · ${state.plan.duration_s.toFixed(2)} s · 待执行` : '无待执行规划';
+  $('plan-label').textContent = state.plan ? `${state.plan.label} · ${state.plan.points} points · ${state.plan.duration_s.toFixed(2)} s · Pending execution` : 'No pending plan';
   const topics = state.topics || [];
   if (JSON.stringify(topics) !== $('topic').dataset.topics) {
     $('topic').replaceChildren(...topics.map(topic=>{const option=document.createElement('option');option.value=topic;option.textContent=topic;return option;}));
     $('topic').dataset.topics=JSON.stringify(topics); $('topic').value=state.camera?.topic || topics[0] || '';
   }
   const camera=state.camera || {};
-  $('resolution').textContent = camera.width ? `${camera.width} × ${camera.height} · ${camera.encoding}` : '等待图像';
-  $('camera-badge').textContent = camera.fresh ? 'LIVE · '+(real?'真机':'仿真')+'相机' : camera.sequence ? '相机延迟 · 保留上一帧' : '等待实时相机';
+  $('resolution').textContent = camera.width ? `${camera.width} × ${camera.height} · ${camera.encoding}` : 'Waiting for image';
+  $('camera-badge').textContent = camera.fresh ? 'LIVE · '+(real?'Robot':'Simulation')+' camera' : camera.sequence ? 'Camera delayed · Showing the last frame' : 'Waiting for live camera';
   $('camera-badge').classList.toggle('stale', !camera.fresh);
-  $('camera-info').textContent = camera.error || (camera.frame_id ? `${camera.frame_id} · 图像年龄 ${camera.age_s?.toFixed(1)} s${camera.fps ? ' · '+camera.fps.toFixed(1)+' fps' : ''}` : '选择一个 sensor_msgs/msg/Image topic');
+  $('camera-info').textContent = camera.error || (camera.frame_id ? `${camera.frame_id} · Frame age ${camera.age_s?.toFixed(1)} s${camera.fps ? ' · '+camera.fps.toFixed(1)+' fps' : ''}` : 'Select a sensor_msgs/msg/Image topic');
   if (!camera.sequence) {rawImage=null;raw.getContext('2d').clearRect(0,0,raw.width,raw.height);enhanced.getContext('2d').clearRect(0,0,enhanced.width,enhanced.height);}
   renderRecords(); renderControls();
 }
 async function poll() {
   if(polling)return;
   polling=true;
-  try {const response=await fetch('api/status',{signal:AbortSignal.timeout(3000)}); if(!response.ok) throw new Error('连接失败'); state=await response.json();render();}
-  catch(error) {state={...state,state:'offline',fresh:false,camera:{...state.camera,fresh:false},plan:null,message:'工作台连接中断'};render();}
+  try {const response=await fetch('api/status',{signal:AbortSignal.timeout(3000)}); if(!response.ok) throw new Error('Connection failed'); state=await response.json();render();}
+  catch(error) {state={...state,state:'offline',fresh:false,camera:{...state.camera,fresh:false},plan:null,message:'Workbench connection lost'};render();}
   finally {polling=false;}
 }
 function drawRaw() {
@@ -129,9 +129,9 @@ raw.onpointerdown=event=>{if(!state.camera?.fresh) return; raw.setPointerCapture
 raw.onpointermove=event=>{if(drag){drag.end=point(event);drawRaw();}};
 raw.onpointerup=event=>{if(!drag)return;drag.end=point(event);const candidate=normalize(drag.start,drag.end);if(candidate[2]*raw.width>=2 && candidate[3]*raw.height>=2)roi=candidate;drag=null;betaRevision++;updateRoi();drawRaw();};
 raw.onpointercancel=()=>{drag=null;drawRaw();};
-function updateRoi() {updateEnhancementControls();$('roi-label').textContent=roi ? `选区：${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : '选区：整张图';}
+function updateRoi() {updateEnhancementControls();$('roi-label').textContent=roi ? `Selection: ${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : 'Selection: Full image';}
 async function loadImage(url) {
-  const response=await fetch(url,{signal:AbortSignal.timeout(4000)});if(!response.ok)throw new Error('图像不可用');
+  const response=await fetch(url,{signal:AbortSignal.timeout(4000)});if(!response.ok)throw new Error('Image unavailable');
   const objectUrl=URL.createObjectURL(await response.blob());
   try {const image=new Image();image.src=objectUrl;await image.decode();return image;}finally{URL.revokeObjectURL(objectUrl);}
 }
@@ -169,16 +169,16 @@ $('draw').onclick=()=>command({kind:'draw',shape:$('draw-shape').value,size:Numb
 $('stop').onclick=async()=>{try{await post('api/stop',{});await poll();}catch(error){toast(error.message);}};
 $('record').onclick=()=>command({kind:'record',name:$('record-name').value,overwrite:$('overwrite').checked});
 $('return').onclick=()=>command({kind:'return',name:selected,speed:Number($('speed').value)});
-$('delete').onclick=()=>{if(confirm(`删除记录「${selected}」？`))command({kind:'delete',name:selected});};
+$('delete').onclick=()=>{if(confirm(`Delete record「${selected}」？`))command({kind:'delete',name:selected});};
 function updateEnhancementControls() {
   const ink=$('enhancement-mode').value==='ink';
-  $('neutral').textContent=ink?'还原增强参数':'还原亮度';
+  $('neutral').textContent=ink?'Reset enhancement':'Reset brightness';
   $('ink-controls').hidden=!ink;
   $('brightness-controls').hidden=ink;
-  $('enhancement-hint').textContent=ink ? (roi?'仅增强框选区域内已有的青蓝色细线；请确保选区避开蓝框。不会加粗或补线，也不表示压力大小。':'请在左侧框选黑色书写面，避开蓝色边框；选区前仅显示原图。') : '亮度调节有助于观察，不会补回原图缺失的细节。';
+  $('enhancement-hint').textContent=ink ? (roi?'Enhance existing cyan strokes inside the selected region; Keep the blue frame outside the selection.does not thicken or reconstruct strokes, does not indicate contact pressure.':'Select the black drawing surface on the left, Exclude the blue frame; Select a region to enable enhancement.') : 'Brightness adjustment improves visibility but cannot restore missing detail.';
 }
 $('enhancement-mode').onchange=()=>{betaRevision++;updateEnhancementControls();};
 for(const id of ['ink-strength','ink-tolerance']) $(id).oninput=()=>{$(id+'-value').textContent=$(id).value;betaRevision++;};
 updateEnhancementControls();
-async function start(){try{const response=await fetch('api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('工作台连接失败，请刷新页面');}}
+async function start(){try{const response=await fetch('api/config');token=(await response.json()).token;await poll();setInterval(poll,350);setInterval(refreshImages,500);}catch(error){toast('Workbench connection failed, Refresh the page');}}
 start();

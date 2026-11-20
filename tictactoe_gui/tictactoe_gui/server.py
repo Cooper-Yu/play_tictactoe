@@ -30,7 +30,7 @@ class CanvasSession:
         self.token = secrets.token_urlsafe(24)
         previous = max((int(p.stem[4:]) for p in self.output.glob('job-*.json')
                         if p.stem[4:].isdigit()), default=0)
-        self.state = dict(state='connecting', message='正在连接本地仿真', busy=False,
+        self.state = dict(state='connecting', message='Connecting to local simulation', busy=False,
                           stroke=0, total=0, completed=0, job=previous, events=[], game=None)
         self.worker = worker
         self.vision_available = vision_available
@@ -62,41 +62,41 @@ class CanvasSession:
     def submit(self, kind, strokes=None, game_request=None):
         if self.environment == 'real':
             if kind not in ('game_start', 'game_vision_move', 'reset'):
-                raise ValueError('真机对弈仅支持视觉确认的普通井字棋')
+                raise ValueError('Real games support only visually confirmed classic Tic-Tac-Toe')
             if kind == 'game_start' and (game_request.get('mode', 'classic') != 'classic'
                     or game_request['size'] != 3 or game_request.get('input_source') != 'vision'):
-                raise ValueError('真机对弈需要3×3和相机识别模式')
+                raise ValueError('Real games require 3×3 and camera recognition mode')
         prepared = prepare_strokes(strokes) if kind == 'draw' else []
         with self.lock:
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked'):
-                raise RuntimeError('尚未就绪或已有任务正在执行')
+                raise RuntimeError('Not ready or another task is running')
             current = self.state["game"]
             if kind == "draw" and current is not None:
-                raise RuntimeError("请先用清屏退出当前对局")
+                raise RuntimeError("Clear the board to exit the current game first")
             if kind == "game_next":
                 if (current is None or current["revision"] != game_request["revision"]
                         or current["phase"] != "between_rounds"):
-                    raise RuntimeError("当前无法进入第二局")
+                    raise RuntimeError("Cannot start round two now")
             if kind == "game_start" and game_request.get("input_source", "click") == "vision":
                 if not self.vision_available:
-                    raise RuntimeError("请先配置 YOLO 权重")
+                    raise RuntimeError("Configure first YOLO Weights")
                 if game_request.get("mode", "classic") != "classic" or game_request["size"] != 3:
-                    raise ValueError("视觉落子仅支持普通 3×3 井字棋")
+                    raise ValueError("Visual moves support only classic 3×3 Tic-Tac-Toe")
             if kind in ("game_move", "game_vision_move"):
                 row, col, revision = (game_request[k] for k in ("row", "col", "revision"))
                 if (current is None or current["revision"] != revision
                         or current["phase"] != "player"):
-                    raise RuntimeError("当前回合已变化，请等待页面刷新")
+                    raise RuntimeError("The turn has changed, Wait for the page to refresh")
                 source = "vision" if kind == "game_vision_move" else "click"
                 if current.get("input_source", "click") != source:
-                    raise RuntimeError("此落子入口与当前对局方式不匹配")
+                    raise RuntimeError("This move endpoint does not match the current input mode")
                 if not (0 <= row < current["size"] and 0 <= col < current["size"]):
-                    raise ValueError("格位超出棋盘")
+                    raise ValueError("Cell is outside the board")
                 if current["board"][row][col]:
-                    raise ValueError("该格已经落子")
+                    raise ValueError("This cell is occupied")
             self.stop.clear()
             job = self.state['job']+1
-            self.state.update(state='queued', message='任务已提交', busy=True,
+            self.state.update(state='queued', message='Task submitted', busy=True,
                               job=job, stroke=0, completed=0, total=len(strokes or []), events=[])
             self.jobs.put_nowait(dict(job=job, kind=kind, strokes=strokes, prepared=prepared, game_request=game_request))
         return job
@@ -105,7 +105,7 @@ class CanvasSession:
         with self.lock:
             if self.state['busy']:
                 self.stop.set()
-                self.state.update(state='stopping', message='正在停止，等待实际停稳')
+                self.state.update(state='stopping', message='Stopping, Waiting for actual settling')
 
     def run(self):
         try:
@@ -148,13 +148,13 @@ def make_handler(session, preview=None):
             if path == '/api/game/camera':
                 frame = session.camera_image()
                 if frame is None:
-                    return self.send(503, {'error': '暂未收到相机图像'})
+                    return self.send(503, {'error': 'No camera image received yet'})
                 return self.send(200, frame, 'image/jpeg')
             if path == '/api/game/frame':
                 job = session.status().get('game_frame')
                 evidence = session.output / f'job-{job}.png'
                 if job is None or not evidence.is_file():
-                    return self.send(404, {'error': '暂无棋盘照片'})
+                    return self.send(404, {'error': 'No board photo available'})
                 return self.send(200, evidence.read_bytes(), 'image/png')
             resources = {'/game': ('game.html', 'text/html; charset=utf-8'),
                          '/game.js': ('game.js', 'text/javascript; charset=utf-8'),
@@ -171,9 +171,9 @@ def make_handler(session, preview=None):
             view = parse_qs(urlparse(self.path).query).get('view', ['rectified'])[0]
             camera, sequence, size = session.preview_frame()
             if camera is None:
-                return self.send(503, {'error': '正在等待相机图像'})
+                return self.send(503, {'error': 'Waiting for camera image'})
             if view == 'detections' and not size:
-                return self.send(409, {'error': '开局后可查看检测与格位'})
+                return self.send(409, {'error': 'Start a game to view detections and cells'})
             try:
                 image = preview.render(camera, sequence, size or 3, view)
             except ValueError as error:
@@ -181,9 +181,9 @@ def make_handler(session, preview=None):
             except Exception as error:
                 print('GAME_PERCEPTION_FAILED', repr(error), flush=True)
                 return self.send(503, {'error': str(error) if isinstance(error, RuntimeError)
-                                       else '感知预览暂不可用'})
+                                       else 'Perception preview is temporarily unavailable'})
             if image is None:
-                return self.send(503, {'error': '正在处理相机图像'})
+                return self.send(503, {'error': 'Processing camera image'})
             return self.send(200, image, 'image/jpeg')
 
         def do_POST(self):
@@ -193,14 +193,14 @@ def make_handler(session, preview=None):
             if (self.headers.get('X-Canvas-Token') != session.token
                     or (origin is not None and origin != expected)
                     or urlparse(expected).hostname not in ('localhost', '127.0.0.1')):
-                return self.send(403, {'error': '请求来源无效'})
+                return self.send(403, {'error': 'Invalid request origin'})
             try:
                 size = int(self.headers.get('Content-Length', '0'))
                 if not 0 < size <= 512000:
-                    return self.send(413, {'error': '请求过大或为空'})
+                    return self.send(413, {'error': 'Request is too large or empty'})
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
-                    raise ValueError('请求必须是对象')
+                    raise ValueError('Request must be an object')
                 if self.path == '/api/stop':
                     session.request_stop()
                     return self.send(202, {'accepted': True})
@@ -213,16 +213,16 @@ def make_handler(session, preview=None):
                               'game_vision_move': ('row', 'col', 'revision'),
                               'game_next': ('revision',)}[kind]
                     if any(type(data.get(field)) is not int for field in fields):
-                        raise ValueError('格数、格位和对局版本必须是整数')
+                        raise ValueError('Board size, Cell coordinates and game revision must be integers')
                     if kind == 'game_start':
                         if data.get('input_source', 'click') not in ('click', 'vision'):
-                            raise ValueError('未知落子方式')
+                            raise ValueError('Unknown move input mode')
                         mode = data.get('mode', 'classic')
                         if not isinstance(mode, str) or (mode, data['size']) not in WIN_LENGTHS:
-                            raise ValueError('无效游戏模式或棋盘尺寸')
+                            raise ValueError('Invalid game mode or board size')
                         if (data.get('first', 'player') not in ('player', 'ai')
                                 or data.get('mark', 'X') not in ('X', 'O')):
-                            raise ValueError('无效的先后手或符号')
+                            raise ValueError('Invalid turn order or symbol')
                     job = session.submit(kind, game_request=data)
                     return self.send(202, {'job': job, 'accepted': True})
                 if self.path not in ('/api/draw', '/api/reset'):

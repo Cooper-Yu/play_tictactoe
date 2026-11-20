@@ -59,7 +59,7 @@ def test_failed_ai_stroke_keeps_verified_human_move_and_pauses():
     assert board["phase"] == "blocked"
     assert board["board"][1][1] == "X"
     assert all("O" not in row for row in board["board"])
-    with pytest.raises(ValueError, match="当前无法落子"):
+    with pytest.raises(ValueError, match="Cannot place a mark now"):
         game.move(0, 0, 3)
 
 
@@ -161,7 +161,7 @@ def test_fixed_three_stone_opening_respects_mark_and_o_turn(monkeypatch, mark, f
     assert [symbol for symbol, _ in actions.calls] == (
         ["X", "O", "X", "O"] if mark == "X" else ["X", "O", "X"]
     )
-    with pytest.raises(ValueError, match="该格已经落子"):
+    with pytest.raises(ValueError, match="This cell is occupied"):
         coordinator.move(0, 8, 2)
 
 
@@ -181,7 +181,7 @@ def test_camera_move_records_existing_mark_and_draws_only_ai_reply():
     game = GameCoordinator(actions, lambda **data: statuses.append(data), lambda: False)
     game.start(3, 1)
 
-    with pytest.raises(ValueError, match="符号"):
+    with pytest.raises(ValueError, match="symbol"):
         game.register_observed_move(1, 2, "O", 2)
     assert game.game.board == [""] * 9 and not actions.calls
 
@@ -193,7 +193,7 @@ def test_camera_move_records_existing_mark_and_draws_only_ai_reply():
     assert phases[2]["board"][1][2] == "X"
     assert [mark for mark, _ in actions.calls] == ["O"]
 
-    with pytest.raises(ValueError, match="已经落子"):
+    with pytest.raises(ValueError, match="occupied"):
         game.register_observed_move(1, 2, "X", 2)
     assert [mark for mark, _ in actions.calls] == ["O"]
 

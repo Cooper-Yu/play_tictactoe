@@ -27,7 +27,7 @@ def real_game_worker(session, *, url, perception, restore=None):
         saved_path = Path(restore)
         saved = json.loads(saved_path.read_text())['game']
         if saved['phase'] != 'finished' or saved.get('input_source') != 'vision':
-            raise ValueError('只恢复已完成视觉对局的展示')
+            raise ValueError('Only completed vision games can be restored for display')
         session.update(game=saved, frame_source='saved', camera_fresh=False, robot_fresh=False)
         photo = saved_path.parent/'finished.jpg'
         if photo.is_file():
@@ -38,7 +38,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                                  progress=progress)
             break
         except requests.RequestException:
-            session.update(state='offline', busy=False, message='工作台连接中断，显示已保存棋局，正在重试')
+            session.update(state='offline', busy=False, message='Workbench disconnected. Showing the saved game and retrying.')
             session.shutdown.wait(5)
     else:
         return
@@ -93,7 +93,7 @@ def real_game_worker(session, *, url, perception, restore=None):
         return found
 
     def register(found, revision):
-        session.update(message='相机三帧确认，正在提交玩家落子')
+        session.update(message='Three camera frames confirmed. Submitting player move.')
         game.register_observed_move(*found, revision)
         if game.game.outcome:
             client.park('zero')
@@ -102,7 +102,7 @@ def real_game_worker(session, *, url, perception, restore=None):
         deadline = time.monotonic()+25
         while session.camera_image() is None:
             if time.monotonic() > deadline:
-                raise RuntimeError('等待真机相机超时')
+                raise RuntimeError('Timed out waiting for the robot camera')
             session.shutdown.wait(.1)
         if restore:
             saved = json.loads(Path(restore).read_text())['game']
@@ -110,9 +110,9 @@ def real_game_worker(session, *, url, perception, restore=None):
             expected = {(r,c):frozenset((m,)) for r,row in enumerate(saved['board'])
                         for c,m in enumerate(row) if m}
             if cells != expected:
-                raise RuntimeError('当前实拍棋盘与保存结果不同，请检查标定或板面')
+                raise RuntimeError('The live board differs from the saved game, Check calibration or board contents')
             session.update(game=saved)
-        session.update(state='ready', busy=False, message='真机视觉对弈已连接')
+        session.update(state='ready', busy=False, message='Real vision game connected')
         while not session.shutdown.is_set():
             try:
                 job = session.jobs.get(timeout=.2)
@@ -129,7 +129,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                             session.state['job'] += 1
                             revision = session.state['job']
                         register(found, revision)
-                        session.update(state='ready', busy=False, message='视觉落子已处理')
+                        session.update(state='ready', busy=False, message='Visual move processed')
                 except Exception as error:
                     session.update(state='blocked', busy=False, message=str(error))
                 continue
@@ -150,7 +150,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                 elif kind == 'game_vision_move':
                     mark = game.player_mark
                     center = game.game.cell_center(request['row'], request['col'])
-                    session.update(message='机械臂代写玩家符号，随后等待相机确认')
+                    session.update(message='Drawing the player mark, then waiting for camera confirmation.')
                     if mark == 'X':
                         actions.draw_x(center, game.game.cell_size*.55)
                     else:
@@ -163,11 +163,11 @@ def real_game_worker(session, *, url, perception, restore=None):
                             break
                         session.shutdown.wait(.2)
                     if found is None:
-                        raise RuntimeError('相机尚未确认唯一新增棋子，检查板面后处理')
+                        raise RuntimeError('Camera has not confirmed one unique new mark, Inspect the board before continuing')
                     register(found, job['job'])
                 else:
                     raise ValueError('Unsupported real game operation')
-                session.update(state='ready', busy=False, message='操作完成')
+                session.update(state='ready', busy=False, message='Operation completed')
             except Exception as error:
                 if game.game is not None:
                     game.block(job['job'])

@@ -16,7 +16,7 @@ def record(z):
 class Driver:
     def __init__(self, z=.25):
         self.pose=S(position=S(x=.2,y=-.05,z=z))
-        self.records={'reset悬空预备':record(.214),'Reset':record(.208)}
+        self.records={'Reset hover':record(.214),'Reset':record(.208)}
         self.recording=S(_reload=lambda:None, environment='real',
                          recorder=S(get_pose=lambda name:self.records[name]))
         self.node=S(is_planning=False)
@@ -118,7 +118,7 @@ def test_missed_hover_alignment_never_lowers_to_press():
 
 def test_direct_reset_uses_only_full_speed_button_legs():
     driver = Driver(.216)
-    driver.records = {'reset悬空预备': record(.216), 'Reset': record(.2069714381)}
+    driver.records = {'Reset hover': record(.216), 'Reset': record(.2069714381)}
     driver.node.cartesian_planner = S(canvas_native_timing=False)
 
     def execute():

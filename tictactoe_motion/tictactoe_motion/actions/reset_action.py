@@ -50,12 +50,12 @@ class ResetAction:
             raise ValueError('Reset orientations must match within 0.01 rad')
         return clearance
 
-    def run(self, speed=.05, hover_name='reset悬空预备', press_name='Reset', *, direct_native=False):
+    def run(self, speed=.05, hover_name='Reset hover', press_name='Reset', *, direct_native=False):
         """! @brief Execute a bounded cycle; return with optical clearing unconfirmed."""
         if not math.isfinite(speed) or not .01 <= speed <= .1:
             raise ValueError('Reset speed must be 0.01 to 0.1')
         d = self.driver
-        self._stage('检查 Reset 两点记录')
+        self._stage('Check Reset two recorded poses')
         d.recording._reload()
         hover = copy.deepcopy(d.recording.recorder.get_pose(hover_name))
         press = copy.deepcopy(d.recording.recorder.get_pose(press_name))
@@ -77,11 +77,11 @@ class ResetAction:
         d.parameters(velocity_scaling=speed, acceleration_scaling=speed)
         current = d.current_pose()
         if current.position.z < hover_z:
-            self._stage('先抬起到悬空高度')
+            self._stage('Raise to clearance height first')
             target = copy.deepcopy(current.position)
             target.z = hover_z
             d.linear(target)
-        self._stage('到达 Reset 悬空点')
+        self._stage('Move to Reset clearance pose')
         d.parameters(record_name=hover_name)
         d.call('load_pose')
         d.call('plan_return')
@@ -104,7 +104,7 @@ class ResetAction:
                 planner.canvas_native_timing = False
                 d.parameters(velocity_scaling=min(speed,.05), acceleration_scaling=min(speed,.05))
         if align_at_hover:
-            self._stage('在悬空高度对齐 Reset 按压点')
+            self._stage('Align at clearance height Reset press pose')
             target = copy.deepcopy(d.current_pose().position)
             if target.z < hover_z - .0001:
                 raise RuntimeError('Reset alignment requires hover height')
@@ -114,25 +114,25 @@ class ResetAction:
             if (math.hypot(reached.x - target.x, reached.y - target.y) > self._ALIGNMENT_TOLERANCE_M
                     or reached.z < hover_z - .0001):
                 raise RuntimeError('Reset horizontal alignment verification failed')
-        self._stage('竖直按下 Reset')
+        self._stage('Press vertically Reset')
         target = copy.deepcopy(d.current_pose().position)
         target.z = press_position['z']
         button_leg(target)
-        self._stage('短暂停留')
+        self._stage('Brief dwell')
         until = time.monotonic()+.3
         d.until(lambda: time.monotonic() >= until, 1.)
-        self._stage('竖直返回悬空点')
+        self._stage('Retract vertically to clearance pose')
         target = copy.deepcopy(d.current_pose().position)
         target.z = hover_z
         button_leg(target)
         if align_at_hover:
-            self._stage('在悬空高度返回原预备点')
+            self._stage('Return to the original approach point at clearance height')
             target = copy.deepcopy(d.current_pose().position)
             if target.z < hover_z - .0001:
                 raise RuntimeError('Reset return requires hover height')
             target.x, target.y = hover_position['x'], hover_position['y']
             d.linear(target)
-        self._stage('按键动作完成，请确认黑板已清空')
+        self._stage('Button action completed, Confirm that the board is clear')
         return {'motion_completed': True, 'clear_confirmed': None,
                 'hover_record': hover_name, 'press_record': press_name,
                 'vertical_distance_m': clearance, 'direct_native': direct_native}

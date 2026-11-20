@@ -23,21 +23,21 @@ def enhance_frame(frame, query):
     from tictactoe_perception.image_enhancer import ImageEnhancer
     beta = int(query['beta'][0])
     if not -255 <= beta <= 255:
-        raise ValueError('亮度偏移应在 -255..255')
+        raise ValueError('Brightness offset must be within -255..255')
     image = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
     roi = None
     if 'roi' in query:
         values = [float(value) for value in query['roi'][0].split(',')]
         if len(values) != 4 or not all(math.isfinite(v) and 0 <= v <= 1 for v in values):
-            raise ValueError('ROI 必须为归一化矩形')
+            raise ValueError('ROI must be a normalized rectangle')
         x, y, w, h = values
         if w <= 0 or h <= 0 or x+w > 1.000001 or y+h > 1.000001:
-            raise ValueError('ROI 超出图像')
+            raise ValueError('ROI is outside the image')
         height, width = image.shape[:2]
         x1, y1 = int(x*width), int(y*height)
         x2, y2 = min(width, int((x+w)*width)), min(height, int((y+h)*height))
         if x2 <= x1 or y2 <= y1:
-            raise ValueError('ROI 小于一个像素')
+            raise ValueError('ROI is smaller than one pixel')
         roi = (x1, y1, x2-x1, y2-y1)
     mode = query.get('mode', ['brightness'])[0]
     if mode == 'ink':
@@ -45,15 +45,15 @@ def enhance_frame(frame, query):
             strength = float(query.get('strength', ['50'])[0])
             tolerance = float(query.get('tolerance', ['20'])[0])
         except ValueError:
-            raise ValueError('无效的笔迹增强参数')
+            raise ValueError('Invalid ink enhancement parameters')
         enhanced = ImageEnhancer().enhance_ink(image, strength, tolerance, roi)
     elif mode == 'brightness':
         enhanced = ImageEnhancer().enhance(image, beta, roi)
     else:
-        raise ValueError('未知图像增强模式')
+        raise ValueError('Unknown image enhancement mode')
     ok, encoded = cv2.imencode('.jpg', enhanced, [cv2.IMWRITE_JPEG_QUALITY, 92])
     if not ok:
-        raise ValueError('图像增强失败')
+        raise ValueError('Image enhancement failed')
     return encoded.tobytes()
 
 
@@ -61,17 +61,17 @@ def validate_command(data, environment='sim'):
     """! @brief Validate browser requests before they reach the ROS queue."""
     kind = data.get('kind')
     if kind not in ('jog', 'preset', 'return', 'execute', 'record', 'delete', 'camera', 'reset', 'draw', 'canvas'):
-        raise ValueError('未知操作')
+        raise ValueError('Unknown operation')
     result = {'kind': kind}
     if kind == 'jog':
         axis = data.get('axis')
         distance = data.get('distance')
         if axis not in ('x', 'y', 'z'):
-            raise ValueError('方向必须是 x / y / z')
+            raise ValueError('Axis must be x / y / z')
         limit = .05 if environment == 'real' and axis in ('x', 'y') else .02
         if (isinstance(distance, bool) or not isinstance(distance, (int, float))
                 or not math.isfinite(distance) or not 0 < abs(distance) <= limit):
-            raise ValueError(f'单步距离必须在 0–{limit*1000:g} mm 内')
+            raise ValueError(f'Step distance must be within 0–{limit*1000:g} mm within')
         result.update(axis=axis, distance=float(distance))
     if kind in ('jog', 'preset', 'return', 'reset', 'draw', 'canvas'):
         default_speed = 1.0 if kind == 'canvas' and environment == 'real' else .1
@@ -79,48 +79,48 @@ def validate_command(data, environment='sim'):
         max_speed = .1 if kind == 'reset' else (1.0 if environment == 'real' else .3)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))
                 or not math.isfinite(speed) or not .01 <= speed <= max_speed):
-            raise ValueError('速度缩放超出当前环境范围')
+            raise ValueError('Speed scaling exceeds the environment limit')
         result['speed'] = float(speed)
     if kind == 'canvas':
         from tictactoe_gui.geometry import validate_strokes
         if environment != 'real':
-            raise ValueError('此画布使用真机标定；仿真保留原画布入口')
+            raise ValueError('This canvas uses real-board calibration; Use the simulation canvas for simulation')
         result['strokes'] = validate_strokes(data.get('strokes'))
     if kind == 'draw':
         if environment != 'real':
-            raise ValueError('此绘图入口只使用真机标定配置；仿真请使用原画布入口')
+            raise ValueError('This drawing entry requires real-board calibration; Use the simulation canvas')
         shape = data.get('shape')
         size = data.get('size', .012)
         center = data.get('center', [.5, .5])
         if shape not in ('x', 'o', 'grid', 'smile', 'docker', 'chair'):
-            raise ValueError('未知的已校验绘图素材')
+            raise ValueError('Unknown validated drawing asset')
         if (isinstance(size, bool) or not isinstance(size, (int, float))
                 or not math.isfinite(size) or not .008 <= size <= .06):
-            raise ValueError('图形尺寸必须在 8–60 mm 内')
+            raise ValueError('Shape size must be within 8–60 mm within')
         if (not isinstance(center, (list, tuple)) or len(center) != 2
                 or any(isinstance(v, bool) or not isinstance(v, (int, float))
                        or not math.isfinite(v) or not 0 <= v <= 1 for v in center)):
-            raise ValueError('图形中心必须在画布范围 [0, 1] 内')
+            raise ValueError('Shape center must be inside the canvas range [0, 1] within')
         skip = data.get('skip_strokes', 0)
         if (isinstance(skip, bool) or not isinstance(skip, int) or not 0 <= skip <= 255
                 or (skip and shape not in ('smile', 'docker', 'chair'))):
-            raise ValueError('仅素材续画可指定有效的已完成笔画数')
+            raise ValueError('Completed-stroke offsets require a supported illustration')
         result.update(shape=shape, size=float(size), center=list(center), skip_strokes=skip)
     if kind in ('preset', 'record', 'return', 'delete'):
         name = data.get('name')
         if not isinstance(name, str) or not name.strip() or len(name) > 80:
-            raise ValueError('记录名称必须为 1–80 个字符')
+            raise ValueError('Record name must contain 1–80 characters')
         result['name'] = name.strip()
         if kind == 'preset' and name not in ('zero', 'clear', 'clear2'):
-            raise ValueError('未知预设位置')
+            raise ValueError('Unknown preset')
         if kind == 'record':
             if not isinstance(data.get('overwrite', False), bool):
-                raise ValueError('overwrite 必须为布尔值')
+                raise ValueError('overwrite must be a boolean')
             result['overwrite'] = data.get('overwrite', False)
     if kind == 'camera':
         topic = data.get('topic')
         if not isinstance(topic, str) or not topic.startswith('/') or len(topic) > 256:
-            raise ValueError('无效相机 topic')
+            raise ValueError('Invalid camera topic')
         result['topic'] = topic
     return result
 
@@ -142,7 +142,7 @@ class WorkbenchSession:
         self.active_operation = None
         self.last_known_pose = None
         self.recovery = None
-        self.state = dict(state='connecting', message='正在连接仿真', busy=False,
+        self.state = dict(state='connecting', message='Connecting to simulation', busy=False,
                           environment=environment, pose=None, joints={}, fresh=False,
                           camera={}, topics=[], records={}, plan=None, comparison=None, job=0)
         self.state['storage'] = str(self.output)
@@ -163,16 +163,16 @@ class WorkbenchSession:
             if self.recovery is not None:
                 raise RuntimeError(FeedbackRecovery.messages[self.recovery.phase])
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked', 'stopping'):
-                raise RuntimeError('尚未就绪或已有操作正在进行')
+                raise RuntimeError('Not ready or another operation is running')
             if command['kind'] == 'execute' and not self.state['plan']:
-                raise RuntimeError('没有可执行的规划')
+                raise RuntimeError('No executable plan')
             self.stop.clear()
             command['job'] = self.state['job'] + 1
-            self.state.update(busy=True, state='queued', message='操作已提交', job=command['job'])
+            self.state.update(busy=True, state='queued', message='Operation submitted', job=command['job'])
             self.jobs.put_nowait(command)
         return command['job']
 
-    def request_stop(self, reason='调用方请求停止', source='caller'):
+    def request_stop(self, reason='Caller requested stop', source='caller'):
         """! @brief Preserve the first stop cause until the stopped job is inspected."""
         event = incident = None
         with self.lock:
@@ -190,7 +190,7 @@ class WorkbenchSession:
                     self.state['feedback_recovery'] = self.recovery.snapshot()
             self.stop.set()
             cause = self.state.get('last_stop', {}).get('reason', reason)
-            self.state.update(state='stopping', plan=None, message='正在停止：'+cause)
+            self.state.update(state='stopping', plan=None, message='Stopping: '+cause)
         if event is not None:
             print('WORKBENCH_STOP '+json.dumps(event, ensure_ascii=False), flush=True)
             if incident is not None:
@@ -202,8 +202,8 @@ class WorkbenchSession:
             self.stop.clear()
             self.state.update(busy=False, plan=None)
             if self.recovery is None:
-                reason = self.state.get('last_stop', {}).get('reason', '原因未记录')
-                self.state.update(state='ready', message='已停止，待执行规划已清除；'+reason)
+                reason = self.state.get('last_stop', {}).get('reason', 'Reason not recorded')
+                self.state.update(state='ready', message='Stopped; pending plan cleared. '+reason)
             else:
                 self.state.update(state='recovering',
                                   message=FeedbackRecovery.messages[self.recovery.phase])
@@ -224,10 +224,10 @@ class WorkbenchSession:
                     or job != self.recovery.incident['job'] or self.stop.is_set()
                     or self.state['busy'] or not self.state['fresh']
                     or not self.recovery.can_acknowledge(time.monotonic())):
-                raise RuntimeError('尚无可确认的反馈恢复，请检查工作台状态')
+                raise RuntimeError('No feedback recovery is ready for confirmation, Check the workbench status')
             self.recovery = None
             self.state.update(state='ready', plan=None, feedback_recovery=None,
-                              message='已确认恢复。请检查板面并选择下一步动作')
+                              message='Recovery acknowledged.Inspect the board and choose the next action')
             return job
 
     def frame(self, key):
@@ -262,7 +262,7 @@ def make_handler(session):
                 from tictactoe_gui.geometry import load_illustration
                 dimensions = session.status().get('canvas')
                 if not dimensions:
-                    return self.send(503, {'error': '画布标定尚未就绪'})
+                    return self.send(503, {'error': 'Canvas calibration is not ready'})
                 try:
                     asset = load_illustration(url.path.rsplit('/', 1)[-1],
                                               board_width=dimensions['width_mm']/1000,
@@ -278,11 +278,11 @@ def make_handler(session):
                         frame = enhance_frame(frame, parse_qs(url.query))
                     except ValueError as error:
                         return self.send(400, {'error': str(error)})
-                return self.send(200, frame, 'image/jpeg') if frame else self.send(503, {'error': '尚无图像'})
+                return self.send(200, frame, 'image/jpeg') if frame else self.send(503, {'error': 'No image available'})
             if url.path == '/api/snapshot':
                 name = parse_qs(url.query).get('name', [''])[0]
                 frame = session.frame('record:'+name)
-                return self.send(200, frame, 'image/jpeg') if frame else self.send(404, {'error': '无关联截图'})
+                return self.send(200, frame, 'image/jpeg') if frame else self.send(404, {'error': 'No screenshot attached'})
             static = {'/': ('workbench.html', 'text/html; charset=utf-8'),
                       '/canvas': ('canvas.html', 'text/html; charset=utf-8'),
                       '/canvas.js': ('canvas.js', 'text/javascript; charset=utf-8'),
@@ -299,14 +299,14 @@ def make_handler(session):
             if (self.headers.get('X-Workbench-Token') != session.token
                     or self.headers.get('Origin', expected) != expected
                     or urlparse(expected).hostname not in ('localhost', '127.0.0.1')):
-                return self.send(403, {'error': '请求来源无效'})
+                return self.send(403, {'error': 'Invalid request origin'})
             try:
                 size = int(self.headers.get('Content-Length', '0'))
                 if not 0 < size <= (512000 if self.path == '/api/canvas' else 4096):
-                    raise ValueError('请求体过大或为空')
+                    raise ValueError('Request body is too large or empty')
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
-                    raise ValueError('请求必须为对象')
+                    raise ValueError('Request must be an object')
                 if self.path == '/api/stop':
                     session.request_stop()
                     return self.send(202, {'accepted': True})
