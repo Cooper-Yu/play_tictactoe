@@ -171,7 +171,7 @@ class RemoteDrawing:
         return self.geometry.o_strokes(*args, **kwargs)
 
     def draw(self, strokes, **options):
-        self.client.command(kind='canvas', strokes=strokes, speed=1.)
+        self.client.command(kind='canvas', strokes=strokes)
         self.client.park()
         return {'passed': True}
 

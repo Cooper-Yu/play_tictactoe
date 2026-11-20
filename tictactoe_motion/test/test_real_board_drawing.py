@@ -37,6 +37,11 @@ def test_real_circle_remains_round_and_grid_bounded():
 def real_driver(fail_at=None):
     d = Driver(fail_at); d.actual.orientation.w = 0.; d.recording = SimpleNamespace(environment='real')
     d.actual.position.x = .2338; d.actual.position.y = .0069; d.actual.position.z = .206
+    d.scaling = dict(velocity_scaling=.45, acceleration_scaling=.45)
+    d.node = SimpleNamespace(
+        cartesian_planner=SimpleNamespace(canvas_native_timing=False),
+        get_parameter=lambda key: SimpleNamespace(value=d.scaling[key]))
+    d.parameters = lambda **values: d.scaling.update(values)
     return d
 
 
@@ -121,3 +126,35 @@ def test_illustrations_use_real_heights_and_preserve_separate_strokes(name):
     assert result['passed'] and result['strokes'] > 1
     assert d.actual.position.z == pytest.approx(.216)
     assert all(stage['result']['passed'] for stage in result['stages'])
+
+
+@pytest.mark.parametrize('shape', ['x', 'o'])
+def test_real_contact_speed_is_separate_from_pen_and_travel_speed(shape):
+    d = real_driver()
+    observed = []
+    original_path, original_linear = d.path, d.linear
+    def path(poses, **options):
+        observed.append(('draw', dict(d.scaling), d.node.cartesian_planner.canvas_native_timing))
+        return original_path(poses, **options)
+    def linear(point, **options):
+        observed.append(('move', dict(d.scaling), d.node.cartesian_planner.canvas_native_timing))
+        return original_linear(point, **options)
+    d.path, d.linear = path, linear
+    actions = DrawingActions(BoardCanvas(profile()), d)
+    getattr(actions, 'draw_'+shape)()
+    assert all(value == dict(velocity_scaling=.45, acceleration_scaling=.45)
+               for kind, value, native in observed if kind == 'draw')
+    assert all(value == dict(velocity_scaling=1., acceleration_scaling=1.)
+               for kind, value, native in observed if kind == 'move')
+    assert all(native for _, _, native in observed)
+    assert d.scaling == dict(velocity_scaling=.45, acceleration_scaling=.45)
+    assert d.node.cartesian_planner.canvas_native_timing is False
+
+
+@pytest.mark.parametrize('key,value', [
+    ('travel_velocity_scaling', 0), ('pen_vertical_velocity_scaling', 1.01),
+    ('travel_velocity_scaling', float('nan')), ('pen_vertical_velocity_scaling', True)])
+def test_invalid_phase_scaling_is_rejected_before_motion(key, value):
+    p = profile(); p[key] = value
+    with pytest.raises(ValueError, match='phase scaling'):
+        BoardCanvas(p)

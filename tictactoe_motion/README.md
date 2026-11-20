@@ -229,3 +229,21 @@ python3 tictactoe_motion/test/verify_record_roundtrip.py --output /tmp/ptt-round
 
 The acceptance helper records sampled feedback in the report. It does not add
 production clear/zero services or allow parallel RViz motion commands.
+## Real drawing speed defaults
+
+Canvas, workbench and board-game drawing default to 45% velocity/acceleration.
+The workbench drawing selector is separate from its travel selector. Explicit drawing
+speed requests still override the default within the existing profile limit.
+
+CanvasDrawing applies the selected settings to contact `*_draw` stages, including
+curves and drawing fallback. Board profile `travel_velocity_scaling: 1.0` and
+`pen_vertical_velocity_scaling: 1.0` preserve the tested full-speed travel and short
+pen-up/down stages. Caller settings are restored after success, cancellation or
+failure. Simulation and Reset retain their existing behavior.
+
+Real drawing uses native trajectory timing without the project's additional 5 mm/s
+Cartesian cap. Model/controller limits, trajectory/feedback checks and existing safe
+approach segmentation remain. Manual jog limits are unchanged. Heights remain
+206/211/216 mm and the original feedback/TF control chain is retained. The new phase
+combination and 45% complex curves still need real-hardware verification; unit and
+mock-browser checks do not certify physical tracking or ink quality.

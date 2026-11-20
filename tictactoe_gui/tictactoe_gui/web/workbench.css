@@ -2,3 +2,5 @@
 .storage{margin:0 24px 12px;font-size:11px;color:#748a9b;overflow-wrap:anywhere}
 
 .ink-controls[hidden],#brightness-controls[hidden]{display:none!important}.ink-controls{margin-top:12px}.ink-controls .brightness{margin-top:10px}
+
+#real-drawing{flex-wrap:wrap}

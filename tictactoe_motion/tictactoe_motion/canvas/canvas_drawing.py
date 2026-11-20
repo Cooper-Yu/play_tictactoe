@@ -36,29 +36,36 @@ class CanvasDrawing(StrokeDrawing):
             raise ValueError('Simulation hover height outside validated range')
 
     def run(self, driver, cancelled=lambda:False, on_stage=lambda name:None):
-        if self.transfer_z is None:
+        if self.canvas.environment != 'real':
             return self._run(driver, cancelled, on_stage)
+        if getattr(getattr(driver, 'recording', None), 'environment', None) != 'real':
+            raise ValueError('Real canvas requires a real motion driver')
         planner = driver.node.cartesian_planner
         previous_limit = getattr(planner, 'canvas_max_length', None)
         planner.canvas_max_length = .5
         requested = {key: driver.node.get_parameter(key).value
                      for key in ('velocity_scaling', 'acceleration_scaling')}
 
-        def configure(native):
-            driver.parameters(**requested)
-            planner.canvas_native_timing = native
-
         def progress(name):
-            configure(True)
+            # Only the contact path uses the requested drawing scaling.
+            if name.endswith('_draw'):
+                scaling = requested
+            else:
+                key = ('pen_vertical_velocity_scaling'
+                       if name.endswith(('_lower', '_lift')) and name != 'exit_lift'
+                       else 'travel_velocity_scaling')
+                value = self.canvas.profile.get(key, 1.0)
+                scaling = dict(velocity_scaling=value, acceleration_scaling=value)
+            driver.parameters(**scaling)
+            planner.canvas_native_timing = True
             on_stage(name)
 
         try:
             stages = self._run(driver, cancelled, progress)
-            if self.exit_to_transfer:
+            if self.transfer_z is not None and self.exit_to_transfer:
                 if cancelled():
                     raise RuntimeError('Drawing cancelled before exit lift')
-                configure(True)
-                on_stage('exit_lift')
+                progress('exit_lift')
                 lift = copy.deepcopy(driver.current_pose().position)
                 lift.z = self.transfer_z
                 result = driver.linear(lift)

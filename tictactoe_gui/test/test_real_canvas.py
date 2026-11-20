@@ -228,7 +228,7 @@ def test_long_or_open_curves_keep_lifted_segments():
                .5+.011*math.sin(t*2*math.pi/128)] for t in range(120)]
     assert continuous_closed_curve([circle[:65],circle[64:]],1,1) is None
 
-def test_transfer_stages_honor_requested_speed_and_restore_on_failure(monkeypatch):
+def test_drawing_and_transfer_speeds_are_separate_and_restore_on_failure(monkeypatch):
     from types import SimpleNamespace as S
     from tictactoe_motion.canvas.canvas_drawing import CanvasDrawing
     c=board()
@@ -236,15 +236,17 @@ def test_transfer_stages_honor_requested_speed_and_restore_on_failure(monkeypatc
     calls=[]
     node=S(cartesian_planner=S(canvas_native_timing=False),
            get_parameter=lambda key:S(value=.4 if key=='velocity_scaling' else .3))
-    driver=S(node=node,parameters=lambda **kw:calls.append(kw))
+    driver=S(node=node,recording=S(environment='real'),parameters=lambda **kw:calls.append(kw))
     def fail(driver, cancelled, progress):
-        for name in ('raise_before_transfer','approach_hover','1_lower'):
+        for name in ('raise_before_transfer','approach_hover','1_lower','1_draw','1_lift','exit_lift'):
             progress(name)
             assert driver.node.cartesian_planner.canvas_native_timing
         raise RuntimeError('feedback stale')
     monkeypatch.setattr(d,'_run',fail)
     with pytest.raises(RuntimeError,match='feedback stale'):d.run(driver)
-    assert all(c==dict(velocity_scaling=.4,acceleration_scaling=.3) for c in calls)
+    fast=dict(velocity_scaling=1.,acceleration_scaling=1.)
+    requested=dict(velocity_scaling=.4,acceleration_scaling=.3)
+    assert calls == [fast, fast, fast, requested, fast, fast, requested]
     assert not driver.node.cartesian_planner.canvas_native_timing
 
 @pytest.mark.parametrize('axis,length', [('x',.134),('y',.173)])
@@ -282,3 +284,9 @@ def test_continuous_candidate_uses_bounded_excursion_only_before_fallback():
     StrokeDrawing('cross').run_strokes(d,[p],upper,lambda:False,lambda _:None,
         {1:[p[:2],p[1:]]},candidate_excursion_limit=1.)
     assert d.calls==[{'allow_plan_retry':True,'excursion_limit':1.},{},{}]
+
+@pytest.mark.parametrize('kind,extra', [
+    ('canvas', {'strokes': [[[.4,.4],[.6,.6]]]}),
+    ('draw', {'shape':'x', 'size':.012})])
+def test_real_drawing_defaults_to_45_percent(kind, extra):
+    assert validate_command(dict(kind=kind, **extra), 'real')['speed'] == .45

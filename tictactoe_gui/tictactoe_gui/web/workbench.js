@@ -77,7 +77,11 @@ function render() {
       const speed = $('speed');
       speed.replaceChildren(...Array.from({length:20}, (_, index) => {
         const percent = (index + 1) * 5;
-        return new Option(percent+'%', String(percent/100), percent===10, percent===10);
+        return new Option(percent+'%', String(percent/100), percent===100, percent===100);
+      }));
+      $('draw-speed').replaceChildren(...Array.from({length:20}, (_, index) => {
+        const percent=(index+1)*5;
+        return new Option(percent+'%', String(percent/100), percent===45, percent===45);
       }));
     }
   }
@@ -166,7 +170,7 @@ $('switch-camera').onclick=()=>command({kind:'camera',topic:$('topic').value});
 $('plan-preset').onclick=()=>command({kind:'preset',name:$('preset').value,speed:Number($('speed').value)});
 $('execute').onclick=()=>command({kind:'execute'});
 $('reset-cycle').onclick=()=>command({kind:'reset',speed:Math.min(Number($('speed').value), .1)});
-$('draw').onclick=()=>command({kind:'draw',shape:$('draw-shape').value,size:Number($('draw-size').value)/1000,speed:Number($('speed').value)});
+$('draw').onclick=()=>command({kind:'draw',shape:$('draw-shape').value,size:Number($('draw-size').value)/1000,speed:Number($('draw-speed').value)});
 $('stop').onclick=async()=>{try{await post('api/stop',{});await poll();}catch(error){toast(error.message);}};
 $('record').onclick=()=>command({kind:'record',name:$('record-name').value,overwrite:$('overwrite').checked});
 $('return').onclick=()=>command({kind:'return',name:selected,speed:Number($('speed').value)});

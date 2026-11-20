@@ -74,7 +74,9 @@ def validate_command(data, environment='sim'):
             raise ValueError(f'Step distance must be within 0–{limit*1000:g} mm within')
         result.update(axis=axis, distance=float(distance))
     if kind in ('jog', 'preset', 'return', 'reset', 'draw', 'canvas'):
-        default_speed = 1.0 if kind == 'canvas' and environment == 'real' else .1
+        default_speed = .1
+        if environment == 'real' and kind != 'reset':
+            default_speed = .45 if kind in ('canvas', 'draw') else 1.0
         speed = data.get('speed', default_speed)
         max_speed = .1 if kind == 'reset' else (1.0 if environment == 'real' else .3)
         if (isinstance(speed, bool) or not isinstance(speed, (int, float))

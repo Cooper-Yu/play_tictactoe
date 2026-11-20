@@ -33,6 +33,11 @@ class BoardCanvas:
                     or not math.isfinite(tolerance) or not 0 < tolerance <= .05
                     or not math.isfinite(speed) or not 0 < speed <= 1.0):
                 raise ValueError('Real drawing orientation/speed profile is invalid')
+            for key in ('travel_velocity_scaling', 'pen_vertical_velocity_scaling'):
+                value = profile.get(key, 1.0)
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or not 0 < value <= speed):
+                    raise ValueError('Invalid real drawing phase scaling: '+key)
             writing = profile.get('drawing_link6_z_m', float('nan'))
             hover = profile.get('hover_link6_z_m', float('nan'))
             if not (math.isfinite(writing) and math.isfinite(hover)
