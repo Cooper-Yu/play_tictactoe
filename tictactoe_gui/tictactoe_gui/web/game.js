@@ -7,6 +7,7 @@ const start = get('start');
 const stop = get('stop');
 const reset = get('reset');
 const image = get('image');
+const cameraDetection = get('camera-detection');
 let token;
 let state;
 let sending = false;
@@ -228,7 +229,7 @@ function render() {
   }
   get('status').textContent = notice || message;
   const cameraUrl = state?.camera_sequence
-    ? '/api/game/camera?seq=' + state.camera_sequence
+    ? (cameraDetection.checked ? '/api/game/perception?view=camera_detections&seq=' : '/api/game/camera?seq=') + state.camera_sequence
     : state?.game_frame ? '/api/game/frame?job=' + state.game_frame : null;
   if (cameraUrl !== frame) {
     frame = cameraUrl;
@@ -240,6 +241,7 @@ function render() {
         image.hidden = false;
         get('preview').querySelector('p').hidden = true;
       };
+      nextImage.onerror = () => { if (frame === cameraUrl) frame = undefined; };
       nextImage.src = cameraUrl;
     } else {
       image.hidden = true;
@@ -334,3 +336,5 @@ if (['four', 'four-three-stone'].includes(preset)) {
 }
 render();
 poll();
+
+cameraDetection.addEventListener('change', () => { frame = undefined; render(); });

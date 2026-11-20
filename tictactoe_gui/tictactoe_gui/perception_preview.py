@@ -17,7 +17,7 @@ _PITCH, _YAW, _HFOV = 0.785379, -1.57, 1.3962634
 _BOARD = np.array([[x, y, 0.0274] for x, y in (
     (0.270, -0.0855), (0.130, -0.0855), (0.130, 0.1035), (0.270, 0.1035)
 )])
-_VIEWS = ("rectified", "edges", "detections")
+_VIEWS = ("rectified", "edges", "detections", "camera_detections")
 
 
 def board_transform(width, height):
@@ -57,6 +57,8 @@ class PerceptionPreview:
             if view == "edges":
                 gray = cv2.cvtColor(rectified, cv2.COLOR_BGR2GRAY)
                 output = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 24, 64)
+            elif view == "camera_detections":
+                output = self.camera_overlay(raw, transform, size)
             elif view == "detections":
                 output = self.overlay(raw, rectified, transform, size)
             else:
@@ -151,4 +153,30 @@ class PerceptionPreview:
             anchor = (round(col*_WIDTH/size)+3, round(row*_HEIGHT/size)+15)
             cv2.putText(output, label, anchor, cv2.FONT_HERSHEY_SIMPLEX,
                         .42, (240, 255, 255), 1, cv2.LINE_AA)
+        return output
+
+
+    def camera_overlay(self, raw, transform, size):
+        """Draw actual symbol detections on the original camera perspective."""
+        output = raw.copy()
+        occupied = self._detect(raw, transform, size)
+        inverse = np.linalg.inv(transform)
+        height, width = output.shape[:2]
+        for candidates in occupied.values():
+            for mark, (confidence, polygon) in candidates.items():
+                points = cv2.perspectiveTransform(np.float32([polygon]), inverse)[0]
+                left, top = np.maximum(np.rint(points.min(axis=0)).astype(int), 0)
+                right, bottom = np.minimum(np.rint(points.max(axis=0)).astype(int),
+                                           [width-1, height-1])
+                color = (208, 240, 117) if mark == "X" else (94, 191, 255)
+                cv2.rectangle(output, (left, top), (right, bottom), color, 1, cv2.LINE_AA)
+                label = f"{mark} {confidence:.2f}"
+                (text_width, text_height), baseline = cv2.getTextSize(
+                    label, cv2.FONT_HERSHEY_SIMPLEX, .38, 1)
+                text_x = max(0, min(left, width-text_width-4))
+                text_y = max(text_height+3, top-3)
+                cv2.rectangle(output, (text_x, text_y-text_height-2),
+                              (text_x+text_width+3, text_y+baseline), color, -1)
+                cv2.putText(output, label, (text_x+1, text_y),
+                            cv2.FONT_HERSHEY_SIMPLEX, .38, (20, 35, 40), 1, cv2.LINE_AA)
         return output
