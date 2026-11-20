@@ -14,6 +14,7 @@ let notice = '';
 let frame;
 let activeMode;
 let visionAvailable = false;
+let realEnvironment = false;
 const perception = get('perception');
 const perceptionView = get('perception-view');
 const perceptionImage = get('perception-image');
@@ -128,7 +129,8 @@ function render() {
   get('three-stone-rules').hidden = !isThreeStone;
   const size = game?.size ?? selected();
   const showPoints = game ? game.mode === "score" : chosenMode() === "score";
-  const ready = online && token && state && !['connecting','offline','blocked'].includes(state.state);
+  const ready = online && token && state && !['connecting','offline','blocked'].includes(state.state)
+    && (!realEnvironment || (state.camera_fresh && state.robot_fresh));
   const busy = sending || state?.busy;
   const playable = ready && !busy && game?.phase === 'player';
   if (Number(board.dataset.size) !== size) {
@@ -166,7 +168,16 @@ function render() {
   get('heading').textContent = ({'score': '分值井字棋', 'four': '四子棋', 'four-three-stone': '四子棋 · 三子开局', '9': '五子棋', '3': '井字棋'})[mode ?? chosenMode()];
   const human = game?.human ?? get('mark').value;
   get('roles').textContent = '你执 ' + human + ' · AI 执 ' + (human === 'X' ? 'O' : 'X');
-  get('connection').textContent = ready ? 'Gazebo 已连接' : (online ? '仿真尚未就绪' : '连接已断开');
+  get('connection').textContent = ready ? (realEnvironment ? '真机已连接' : 'Gazebo 已连接')
+    : (online ? (realEnvironment ? '等待真机反馈或相机' : '仿真尚未就绪') : '连接已断开');
+  if (realEnvironment) {
+    get('camera-heading').textContent = state?.frame_source === 'saved' ? '已保存的真机画面' : '真机相机';
+  }
+  const observed = state?.vision;
+  get('vision-status').textContent = observed
+    ? '相机帧 ' + observed.sequence + ' · 新落子一致 ' + observed.consecutive + ' / 3'
+      + (observed.confirmed ? ' · 已确认第 ' + (observed.confirmed[0]+1) + ' 行第 ' + (observed.confirmed[1]+1) + ' 列 ' + observed.confirmed[2] : '')
+    : (realEnvironment ? (state?.frame_source === 'saved' ? '已保存棋局的 YOLO 识别结果，等待实时连接' : '连续三帧确认后更新左侧棋盘') : '');
   start.disabled = !ready || busy;
   start.textContent = game ? '重新开局' : '开局';
   stop.disabled = !online || !state?.busy;
@@ -244,6 +255,24 @@ async function refresh() {
     const config = await response.json();
     token = config.token;
     visionAvailable = config.vision_available === true;
+    realEnvironment = config.environment === 'real';
+    document.body.dataset.environment = config.environment;
+    if (realEnvironment) {
+      get('camera-heading').textContent = '真机相机';
+      image.alt = '真实平板与机械臂画面';
+      get('preview').querySelector('p').textContent = '正在等待真机相机画面';
+      perception.open = true;
+      perceptionView.value = 'detections';
+      get('input-source').value = 'vision';
+      get('input-source').querySelector('[value=click]').disabled = true;
+      get('input-source').querySelector('[value=vision]').textContent = '机械臂代写 · 相机确认';
+      document.querySelectorAll('input[name=size]').forEach(input => {
+        if (input.value !== '3') input.closest('label').hidden = true;
+      });
+      get('canvas-link').textContent = '定位工作台';
+      get('canvas-link').href = config.workstation_url;
+      board.style.aspectRatio = config.width_mm + '/' + config.height_mm;
+    }
     const supportsThreeStone = config.game_modes?.includes('four-three-stone') === true;
     get('three-stone-option').hidden = !supportsThreeStone;
     if (!supportsThreeStone && chosenMode() === 'four-three-stone') {

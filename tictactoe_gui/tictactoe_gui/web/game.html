@@ -8,7 +8,7 @@
   <script src="/game.js" defer></script>
 </head>
 <body>
-  <header><h1>机械臂对弈</h1><a href="/">返回画布</a><span id="connection">正在连接 Gazebo</span></header>
+  <header><h1>机械臂对弈</h1><a id="canvas-link" href="/">返回画布</a><span id="connection">正在连接 Gazebo</span></header>
   <main>
     <section class="play" aria-label="对弈棋盘">
       <div class="board-heading"><h2 id="heading">井字棋</h2><span id="roles">你执 X · AI 执 O</span></div>
@@ -18,7 +18,7 @@
     </section>
     <aside class="game-sidebar">
       <section class="camera">
-        <div class="camera-heading"><h2>仿真相机</h2><button id="stop" class="stop" disabled>停止运动</button></div>
+        <div class="camera-heading"><h2 id="camera-heading">仿真相机</h2><button id="stop" class="stop" disabled>停止运动</button></div>
         <div id="preview" class="preview"><p>正在等待 Gazebo 相机画面</p><img id="image" alt="Gazebo 平板与机械臂画面" hidden></div>
       </section>
       <details id="perception" class="camera perception">
@@ -33,7 +33,7 @@
         <div class="preview"><img id="perception-image" alt="处理后的棋盘画面" hidden>
           <p id="perception-message">正在等待相机画面</p>
         </div>
-        <p id="perception-caption">按当前仿真棋盘标定做透视校正。</p>
+        <p id="vision-status" aria-live="polite"></p><p id="perception-caption">按当前仿真棋盘标定做透视校正。</p>
       </details>
       <section class="controls" aria-label="对弈设置">
         <fieldset>

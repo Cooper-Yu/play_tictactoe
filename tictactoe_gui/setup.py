@@ -9,4 +9,5 @@ setup(
     maintainer='cooper', maintainer_email='liuzi9240@gmail.com',
     description='Local tablet canvas with ordered simulation drawing', license='Apache-2.0',
     entry_points={'console_scripts':['canvas_gui = tictactoe_gui.server:main',
-                                     'localization_gui = tictactoe_gui.workbench:main']})
+                                     'localization_gui = tictactoe_gui.workbench:main',
+                                     'real_game_gui = tictactoe_gui.real_game:main']})

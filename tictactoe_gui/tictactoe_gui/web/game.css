@@ -145,3 +145,22 @@ label { min-width: 120px; }
 }
 
 .game-options label[hidden] { display: none; }
+
+.controls label[hidden] { display: none; }
+#vision-status { color: #096d70; }
+
+@media (min-width: 960px) {
+  body[data-environment="real"] main:has(.perception[open]) {
+    width: min(1540px, calc(100% - 32px));
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.1fr) minmax(220px, .9fr);
+    gap: 16px;
+  }
+  body[data-environment="real"] main:has(.perception[open]) .game-sidebar { display: contents; }
+  body[data-environment="real"] .play { grid-column: 1; grid-row: 1; }
+  body[data-environment="real"] .camera:not(.perception) { grid-column: 2; grid-row: 1; }
+  body[data-environment="real"] .perception { grid-column: 3; grid-row: 1; }
+  body[data-environment="real"] main:has(.perception[open]) .controls { grid-column: 1 / -1; grid-row: 2; }
+  body[data-environment="real"] .tablet { width: min(100%, 340px, 44vh); }
+  body[data-environment="real"] .perception .preview,
+  body[data-environment="real"] .perception .preview img { max-height: 55vh; }
+}

@@ -238,3 +238,29 @@ ros2 launch tictactoe_gui canvas_sim.launch.py \
 给本地仿真页面配置 YOLO 权重后，普通 3×3 井字棋可以在开局前选择「模拟书写 · 相机识别」。点击空格让仿真机械臂代写玩家符号。机械臂回到 `zero` 后，程序从实时相机取帧，连续三帧确认原有棋子一致、只有一个新增玩家符号时，才把识别出的格位登记到对局并启动 AI 回合。每个回合单独验证，确认失败时暂停对局。
 
 默认落子方式是「网页点格」。视觉模式下，网页格位只供仿真代写使用，识别提交由仿真后台完成。
+
+### Real robot vision game GUI
+
+The existing `/game` page can connect to the real workstation through a local
+vision service. It shows the coordinator board, raw camera and YOLO overlay
+side by side. A clicked cell only requests a proxy-player drawing. Three distinct
+camera frames must confirm one new mark before the coordinator registers it.
+A visible physical player mark can also be confirmed while the worker is idle.
+
+```bash
+python3 -m tictactoe_gui.real_game \
+  --workstation-url "<current webpage_address>" \
+  --weights "<real validated best.pt>" \
+  --grid-points "<four real internal grid intersections.json>" \
+  --output "<game evidence directory>" --port 8775
+```
+
+Open `http://localhost:8775/game`. `--device` defaults to CPU. Use `--device 0`
+for local GPU inference. The four grid intersections must match the current
+camera and physical playing area. New games clear the board and draw the grid
+using the calibrated real canvas. Only classic 3x3 vision games are supported.
+`--restore-game <finished game.json>` displays a completed game and checks it
+against the camera after connecting. While the workstation is unavailable,
+the page labels its retained photo and detection overlay as saved images and
+disables movement. Update the workstation URL on service launch if the cloud
+session changes. Startup and restoring the completed display issue no motion.

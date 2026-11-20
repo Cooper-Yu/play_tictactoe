@@ -19,7 +19,8 @@ from tictactoe_gui.geometry import prepare_strokes, load_illustration
 
 class CanvasSession:
     """! @brief Serialize jobs; keep HTTP responsive while ROS plans and executes."""
-    def __init__(self, output, worker, *, vision_available=False):
+    def __init__(self, output, worker, *, vision_available=False, environment='sim'):
+        self.environment = environment
         self.output = Path(output).expanduser().resolve()
         self.output.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
@@ -43,10 +44,11 @@ class CanvasSession:
         with self.lock:
             return copy.deepcopy(self.state)
 
-    def publish_camera(self, image):
+    def publish_camera(self, image, sequence=None):
         with self.lock:
             self.latest_camera = image
-            self.state['camera_sequence'] = self.state.get('camera_sequence', 0) + 1
+            self.state['camera_sequence'] = (self.state.get('camera_sequence', 0) + 1
+                                             if sequence is None else sequence)
 
     def camera_image(self):
         with self.lock:
@@ -58,6 +60,12 @@ class CanvasSession:
             return self.latest_camera, self.state.get("camera_sequence", 0), game["size"] if game else 0
 
     def submit(self, kind, strokes=None, game_request=None):
+        if self.environment == 'real':
+            if kind not in ('game_start', 'game_vision_move', 'reset'):
+                raise ValueError('真机对弈仅支持视觉确认的普通井字棋')
+            if kind == 'game_start' and (game_request.get('mode', 'classic') != 'classic'
+                    or game_request['size'] != 3 or game_request.get('input_source') != 'vision'):
+                raise ValueError('真机对弈需要3×3和相机识别模式')
         prepared = prepare_strokes(strokes) if kind == 'draw' else []
         with self.lock:
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked'):
@@ -71,7 +79,7 @@ class CanvasSession:
                     raise RuntimeError("当前无法进入第二局")
             if kind == "game_start" and game_request.get("input_source", "click") == "vision":
                 if not self.vision_available:
-                    raise RuntimeError("请先配置仿真 YOLO 权重")
+                    raise RuntimeError("请先配置 YOLO 权重")
                 if game_request.get("mode", "classic") != "classic" or game_request["size"] != 3:
                     raise ValueError("视觉落子仅支持普通 3×3 井字棋")
             if kind in ("game_move", "game_vision_move"):
@@ -131,15 +139,16 @@ def make_handler(session, preview=None):
             if self.path == '/api/status':
                 return self.send(200, session.status())
             if self.path == '/api/config':
-                return self.send(200, dict(token=session.token, width_mm=144, height_mm=193,
-                                           environment='sim', vision_available=session.vision_available, game_modes=sorted({mode for mode, _ in WIN_LENGTHS})))
+                return self.send(200, dict(token=session.token, width_mm=getattr(session, 'width_mm', 144), height_mm=getattr(session, 'height_mm', 193),
+                                           workstation_url=getattr(session, 'workstation_url', ''),
+                                           environment=session.environment, vision_available=session.vision_available, game_modes=(['classic'] if session.environment == 'real' else sorted({mode for mode, _ in WIN_LENGTHS}))))
             path = urlparse(self.path).path
             if path == '/api/game/perception' and preview is not None:
                 return self.send_preview()
             if path == '/api/game/camera':
                 frame = session.camera_image()
                 if frame is None:
-                    return self.send(503, {'error': '暂未收到 Gazebo 相机图像'})
+                    return self.send(503, {'error': '暂未收到相机图像'})
                 return self.send(200, frame, 'image/jpeg')
             if path == '/api/game/frame':
                 job = session.status().get('game_frame')
