@@ -104,6 +104,10 @@ def real_game_worker(session, *, url, perception, restore=None):
             if time.monotonic() > deadline:
                 raise RuntimeError('Timed out waiting for the robot camera')
             session.shutdown.wait(.1)
+        session.update(state='connecting', message='Warming up YOLO inference; robot controls remain idle')
+        warmup_started = time.monotonic()
+        perception.detect_cells(session.camera_image())
+        session.update(inference_warmup_s=time.monotonic()-warmup_started)
         if restore:
             saved = json.loads(Path(restore).read_text())['game']
             cells = perception.detect_cells(session.camera_image())
