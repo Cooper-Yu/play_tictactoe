@@ -1,9 +1,10 @@
 """Run all real-robot web GUIs and CPU perception inside The Construct."""
 import sys
+import os
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, GroupAction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
@@ -16,10 +17,13 @@ def generate_launch_description():
             Path.home()/'ros2_ws/src/play_tictactoe/data/cloud_gui')),
         DeclareLaunchArgument('grid_points', default_value=str(share/'config/grid_points_real.json')),
         DeclareLaunchArgument('cpu_threads', default_value='2'),
-        IncludeLaunchDescription(
+        SetEnvironmentVariable('PYTHONPATH', [
+            str(Path.home()/'ros2_ws/src/play_tictactoe/.cloud-python'),
+            os.pathsep, os.environ.get('PYTHONPATH', '')]),
+        GroupAction([IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(share/'launch/localization_real.launch.py')),
             launch_arguments={'port':'8765', 'output_dir':str(
-                Path.home()/'ros2_ws/src/play_tictactoe/data/localization_real')}.items()),
+                Path.home()/'ros2_ws/src/play_tictactoe/data/localization_real')}.items())]),
         ExecuteProcess(cmd=[
             sys.executable, '-m', 'tictactoe_gui.real_game',
             '--workstation-url', 'http://127.0.0.1:8765/',

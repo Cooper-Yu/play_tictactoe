@@ -7,6 +7,11 @@
   424x240 camera image. Verify or replace this file after any camera/board movement.
 - These assets do not authorize robot movement.
 
+Cloud setup (isolated from the system Python; existing Torch/OpenCV are reused):
+
+    cd ~/ros2_ws/src/play_tictactoe
+    python3 -m pip install --target .cloud-python --no-deps -r tictactoe_gui/config/cloud-requirements.txt
+
 Cloud startup, after MoveGroup is running:
 
     source ~/ros2_ws/install/setup.bash
