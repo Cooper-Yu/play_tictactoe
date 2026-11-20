@@ -19,8 +19,9 @@ WIN_LENGTHS = {
 class GameCoordinator:
     """Own the game on the worker thread and publish snapshots after verified marks."""
 
-    def __init__(self, actions, publish, cancelled):
+    def __init__(self, actions, publish, cancelled, *, flip=True):
         self.actions = actions
+        self.flip = flip
         self.publish = publish
         self.cancelled = cancelled
         self.game = None
@@ -95,10 +96,10 @@ class GameCoordinator:
         width, height = self.actions.width-.004, self.actions.height-.004
         swapped = self.human != self.player_mark
         if self.mode == "score":
-            self.game = ScoreTicTacToe(self.actions, width, height, flip=True, swap_marks=swapped)
+            self.game = ScoreTicTacToe(self.actions, width, height, flip=self.flip, swap_marks=swapped)
         else:
             self.game = GridGame(self.actions, width=width, height=height, rows=size,
-                                 columns=size, win_length=WIN_LENGTHS[self.mode, size], flip=True,
+                                 columns=size, win_length=WIN_LENGTHS[self.mode, size], flip=self.flip,
                                  swap_marks=swapped)
         self._update("preparing", revision)
         try:
