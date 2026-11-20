@@ -85,3 +85,59 @@ def test_invalid_records_rejected_before_moving(problem):
     else:del d.records['Reset']
     with pytest.raises((ValueError,KeyError)):ResetAction(d).run()
     assert not d.calls
+
+
+def test_new_press_xy_is_reached_at_hover_and_original_prep_is_restored():
+    driver = Driver()
+    press = driver.records['Reset']['pose_stamped']['pose']['position']
+    press.update(x=.22885, y=-.10756, z=.20697)
+
+    result = ResetAction(driver).run()
+
+    targets = [target for operation, target in driver.calls if operation == 'linear']
+    assert [(p.x, p.y, p.z) for p in targets] == [
+        (.22885, -.10756, .214),
+        (.22885, -.10756, .20697),
+        (.22885, -.10756, .214),
+        (.22684, -.10757, .214),
+    ]
+    assert result['vertical_distance_m'] == pytest.approx(.00703)
+
+
+def test_missed_hover_alignment_never_lowers_to_press():
+    driver = Driver()
+    driver.records['Reset']['pose_stamped']['pose']['position']['x'] += .002
+    driver.linear = Mock()
+
+    with pytest.raises(RuntimeError, match='horizontal alignment verification failed'):
+        ResetAction(driver).run()
+
+    assert driver.linear.call_count == 1
+    assert driver.linear.call_args.args[0].z == .214
+
+
+def test_direct_reset_uses_only_full_speed_button_legs():
+    driver = Driver(.216)
+    driver.records = {'reset悬空预备': record(.216), 'Reset': record(.2069714381)}
+    driver.node.cartesian_planner = S(canvas_native_timing=False)
+
+    def execute():
+        driver.pose.position = S(x=.22684, y=-.10757, z=.216)
+        return {'passed': True}
+
+    original_linear = driver.linear
+    legs = []
+
+    def linear(target):
+        last_setting = next(value for kind, value in reversed(driver.calls) if kind == 'parameters')
+        legs.append((target.z, last_setting['velocity_scaling'],
+                     driver.node.cartesian_planner.canvas_native_timing))
+        return original_linear(target)
+
+    driver.execute = execute
+    driver.linear = linear
+    result = ResetAction(driver).run(direct_native=True)
+
+    assert legs == [(.2069714381, 1.0, True), (.216, 1.0, True)]
+    assert result['direct_native'] is True
+    assert driver.node.cartesian_planner.canvas_native_timing is False

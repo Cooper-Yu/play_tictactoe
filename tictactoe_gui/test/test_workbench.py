@@ -1,6 +1,7 @@
 """Exercise workstation request boundaries, image enhancement and HTTP protection."""
 import json
 import threading
+import time
 from http.server import ThreadingHTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -42,7 +43,7 @@ def test_real_commands_retain_small_step_and_speed_limits(tmp_path):
     session = WorkbenchSession(tmp_path, environment='real')
     assert session.status()['environment'] == 'real'
     assert validate_command(dict(kind='jog', axis='x', distance=.05, speed=.1), 'real')['distance'] == .05
-    for command in [dict(kind='jog', axis='z', distance=.05), dict(kind='jog', axis='x', distance=.051), dict(kind='preset', name='clear', speed=.2)]:
+    for command in [dict(kind='jog', axis='z', distance=.05), dict(kind='jog', axis='x', distance=.051), dict(kind='preset', name='clear', speed=1.01)]:
         with pytest.raises(ValueError):
             validate_command(command, 'real')
 
@@ -97,7 +98,7 @@ def test_real_illustrations_keep_existing_motion_boundary(shape):
     assert validate_command(command, 'real')['shape'] == shape
     with pytest.raises(ValueError): validate_command(command, 'sim')
     with pytest.raises(ValueError): validate_command(dict(command, size=.061), 'real')
-    with pytest.raises(ValueError): validate_command(dict(command, speed=.11), 'real')
+    with pytest.raises(ValueError): validate_command(dict(command, speed=1.01), 'real')
     with pytest.raises(ValueError): validate_command(dict(command, shape='../chair'), 'real')
 
 
@@ -111,3 +112,46 @@ def test_explicit_resume_is_limited_to_named_illustrations():
     assert validate_command(dict(kind='draw',shape='smile',skip_strokes=6), 'real')['skip_strokes']==6
     with pytest.raises(ValueError):
         validate_command(dict(kind='draw',shape='x',skip_strokes=1), 'real')
+
+
+def test_http_recovery_acknowledges_without_submitting_motion(tmp_path):
+    session = WorkbenchSession(tmp_path, 'real')
+    session.update(job=3, fresh=True, state='running', busy=True)
+    session.request_stop('joint stream expired', 'feedback_guard')
+    session.finish_stop()
+    server = ThreadingHTTPServer(('127.0.0.1', 0), make_handler(session))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f'http://127.0.0.1:{server.server_port}'
+    headers = {'Origin': base, 'X-Workbench-Token': session.token,
+               'Content-Type': 'application/json'}
+
+    def post(command):
+        return urlopen(Request(base+'/api/command', data=json.dumps(command).encode(),
+                               headers=headers), timeout=2)
+
+    def status():
+        with urlopen(base+'/api/status', timeout=2) as response:
+            return json.load(response)
+
+    try:
+        ack = {'kind': 'acknowledge_recovery', 'job': 3}
+        with pytest.raises(HTTPError) as error:
+            post(ack)
+        assert error.value.code == 409
+        assert status()['feedback_recovery']['phase'] == 'waiting'
+        now = time.monotonic()
+        for i in range(23):
+            sample_time = now - 2.2 + i*.1
+            sample = (sample_time, sample_time), (0.,)*6
+            session.observe_recovery(sample_time, True, sample, .0001)
+        assert status()['feedback_recovery']['phase'] == 'confirmation'
+        with post(ack) as response:
+            assert response.status == 202
+            assert json.load(response)['job'] == 3
+        assert status()['state'] == 'ready'
+        assert status()['plan'] is None and session.jobs.empty()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

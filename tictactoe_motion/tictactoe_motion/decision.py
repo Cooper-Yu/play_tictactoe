@@ -1,4 +1,4 @@
-"""CPU decision engines for three-in-a-row and freestyle nine-by-nine Gomoku."""
+"""CPU decision engines for three-in-a-row and four-in-a-row and freestyle nine-by-nine Gomoku."""
 
 from functools import lru_cache
 import os
@@ -102,22 +102,27 @@ def _rapfi_move(state, player, executable, move_time_ms):
                     process.kill()
 
 
-def choose_move(board, player, *, rapfi_path=None, move_time_ms=500):
+def choose_move(board, player, *, win_length=None, rapfi_path=None, move_time_ms=500,
+                randomize_four_ties=False):
     """! @brief Return the next zero-based (row, col) for a confirmed X/O board.
 
     Empty cells contain an empty string. X plays first. Return None for a finished
-    position. The nine-by-nine mode uses a Rapfi executable on Linux.
+    position. Five-in-a-row uses a Rapfi executable on Linux.
     """
     size = len(board)
     if size not in (3, 9) or any(len(row) != size for row in board):
         raise ValueError("Expected a square 3x3 or 9x9 board")
+    if win_length is None:
+        win_length = 3 if size == 3 else 5
+    if (size, win_length) not in ((3, 3), (9, 4), (9, 5)):
+        raise ValueError("Expected 3×3 three-in-a-row, or 9×9 with four or five in a row")
     state = tuple(cell for row in board for cell in row)
     if any(cell not in ("", "X", "O") for cell in state) or player not in ("X", "O"):
         raise ValueError("Board cells must be empty, X, or O; player must be X or O")
     balance = state.count("X") - state.count("O")
     if balance not in (0, 1):
         raise ValueError("Invalid X/O move counts")
-    if _winner(state, size, 3 if size == 3 else 5) or all(state):
+    if _winner(state, size, win_length) or all(state):
         return None
     if player != ("X" if balance == 0 else "O"):
         raise ValueError("Player does not match the current turn")
@@ -125,6 +130,11 @@ def choose_move(board, player, *, rapfi_path=None, move_time_ms=500):
         best_index, _ = max(_moves(state, player),
                             key=lambda move: -_minimax(move[1], _other(player)))
         return divmod(best_index, 3)
+
+    if win_length == 4:
+        from tictactoe_motion.four_in_a_row import choose_four_move
+
+        return choose_four_move(state, player, move_time_ms, randomize_ties=randomize_four_ties)
 
     row, col = _rapfi_move(state, player, rapfi_path or os.getenv("TICTACTOE_RAPFI"),
                            move_time_ms)

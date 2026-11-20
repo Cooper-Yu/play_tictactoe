@@ -113,6 +113,90 @@ def test_shared_canvas_http_large_payload_and_auth(tmp_path,gateway):
         for t in threads:t.join()
 
 
-@pytest.mark.parametrize('data', [dict(strokes=[]),dict(strokes=[[[0,0],[True,1]]]),dict(strokes=[[[0,0],[1,1]]],speed=.2)])
+@pytest.mark.parametrize('data', [dict(strokes=[]),dict(strokes=[[[0,0],[True,1]]]),dict(strokes=[[[0,0],[1,1]]],speed=1.01)])
 def test_canvas_rejects_invalid_input(data):
     with pytest.raises(ValueError):validate_command(dict(data,kind='canvas'),'real')
+
+@pytest.mark.parametrize('length,candidate', [(.085, True), (.120, True), (.130, False)])
+def test_long_straight_source_preserves_segmented_fallback(length, candidate):
+    canvas = board()
+    half = length/(2*(canvas.x1-canvas.x0-.002))
+    action = CanvasAction(canvas, [[[.5-half,.5],[.5+half,.5]]])
+    assert bool(action.drawings[0].fallback) is candidate
+    if candidate:
+        assert len(action.prepared) == 1
+        assert len(action.drawings[0].fallback[1]) > 1
+    else:
+        assert len(action.prepared) > 1
+
+
+def test_plan_rejection_retries_before_any_ink_and_execution_error_stops():
+    from geometry_msgs.msg import Pose
+    from tictactoe_motion.stroke_drawing import StrokeDrawing
+
+    class Driver:
+        def __init__(self, fail=False):
+            self.pose = Pose()
+            self.draws = []
+            self.fail = fail
+
+        def current_pose(self):
+            return self.pose
+
+        def linear(self, point):
+            self.pose.position = point
+            return {'passed': True}
+
+        def path(self, poses, allow_plan_retry=False):
+            if allow_plan_retry:
+                if self.fail:
+                    raise RuntimeError('execution failed')
+                return None
+            self.draws.append(poses)
+            self.pose.position = poses[-1].position
+            return {'passed': True}
+
+    a, b, c = (Pose() for _ in range(3))
+    b.position.x, c.position.x = .04, .08
+    upper = Pose()
+    upper.position.z = .01
+    drawing = StrokeDrawing('cross')
+    driver = Driver()
+    stages = drawing.run_strokes(driver, [[a,b,c]], upper, lambda: False, lambda _: None,
+                                 {1:[[a,b],[b,c]]})
+    assert len(driver.draws) == 2
+    assert [stage['stage'] for stage in stages] == [
+        '1_lower', '1_draw', '1_fallback_1_draw', '1_fallback_1_lift',
+        '1_fallback_2_lower', '1_fallback_2_draw', '1_fallback_2_lift']
+    failing_driver = Driver(fail=True)
+    with pytest.raises(RuntimeError, match='execution failed'):
+        drawing.run_strokes(failing_driver, [[a,b,c]], upper, lambda: False, lambda _: None,
+                            {1:[[a,b],[b,c]]})
+    assert not failing_driver.draws
+
+
+def test_real_canvas_approach_splits_only_rejected_plan():
+    from geometry_msgs.msg import Point
+    from tictactoe_motion.canvas_drawing import CanvasDrawing
+
+    class Driver:
+        def __init__(self, reject):
+            self.reject = reject
+            self.calls = []
+
+        def linear(self, point, *, allow_excursion_retry=False):
+            self.calls.append((point, allow_excursion_retry))
+            return None if allow_excursion_retry and self.reject else {'passed': True}
+
+    start = Point(x=0.12, y=-0.1, z=.216)
+    end = Point(x=0.12, y=.03, z=.216)
+    direct = Driver(False)
+    assert CanvasDrawing.real_approach(direct, start, end, lambda: False)['passed']
+    assert len(direct.calls) == 1
+    split = Driver(True)
+    result = CanvasDrawing.real_approach(split, start, end, lambda: False)
+    assert result['approach_segments'] == 3
+    assert [point.y for point, _ in split.calls[1:]] == pytest.approx([-.1+.13/3, -.1+.26/3, .03])
+    assert all(point.z == .216 and not retry for point, retry in split.calls[1:])
+    with pytest.raises(RuntimeError, match='cancelled'):
+        CanvasDrawing.real_approach(split, start, end, lambda: True)

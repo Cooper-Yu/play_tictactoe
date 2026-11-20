@@ -50,7 +50,7 @@ before switching interfaces, or specify another port for a separate simulation.
 The explicit hardware entry is `ros2 launch tictactoe_gui localization_real.launch.py`.
 It requires the connected physical Piper bridge and official MoveIt server in the same ROS domain.
 It checks fresh joint/TF feedback, controller mapping and unique motion owners. Startup does not move or enable hardware.
-Real XY steps are limited to 50mm and Z steps to 20mm; velocity scaling stays at 10% maximum, with 5% selected initially. Larger steps require checking clearance first.
+Real XY steps are limited to 50mm and Z steps to 20mm; motion velocity scaling offers 5% increments up to 100%, with 10% selected initially. Reset remains capped at 10%. Larger steps require checking clearance first.
 Physical records use data/localization_real/poses_real.json and separate screenshots.
 For The Construct, use the HTTPS webpage gateway below in a separate browser tab.
 The ROS backend stays loopback-only; the gateway exposes only workstation routes through the platform. Hardware operation requires explicit authorization.
@@ -178,7 +178,7 @@ replayed automatically after a timeout or connection loss.
 - Actual calibrated area: about 138.004 by 177.005 mm, with a further 1 mm
   footprint margin. Screen right maps to base -X and down to +Y.
 - Drawing Z206 mm, hover Z216 mm and the clear orientation come from
-  `board_real.yaml`. Speeds are 5% or 10%; feedback protection is unchanged.
+  `board_real.yaml`. Drawing scaling is selectable from 5% to 100% in 5% increments. The default is 10%.
 - Up to 32 source strokes / 8000 points; geometry is checked before any motion.
   Long strokes (>60 mm), dense paths or sharp reversals are lifted and split
   while preserving the source order. The backend does not smooth the drawing.
@@ -191,3 +191,46 @@ replayed automatically after a timeout or connection loss.
 
 The original standalone simulation canvas and its 180-degree mapping remain
 separate. Do not launch that simulation driver against a real arm.
+
+### Local robot game
+
+With Gazebo/MoveIt running in an isolated local ROS domain, launch
+`canvas_sim.launch.py` and open `http://127.0.0.1:8765/game`.
+The canvas home also links there. Use `port:=8768` if launching on that port.
+
+- Choose 3×3 Minimax or 9×9 Rapfi. Set `TICTACTOE_RAPFI` before launch for Rapfi.
+- Starting a game creates the calibrated 140×189 mm grid in Gazebo. Click an
+  empty cell to ask the arm to draw X. The AI selects O after X is verified.
+- Each mark uses measured arm motion, and the board updates only when the mark
+  is verified. The displayed Gazebo image refreshes after the round.
+- Stop pauses the round. Start a new game to clear the virtual ink and recover
+  the board after partial drawing. Clear and exit uses the simulated Reset
+  motion. This page requires the existing local Gazebo worker.
+The score-based 3×3 mode plays two rounds with reversed first turns. Each
+player places four marks per round. The center is worth 3 points, corners 2,
+and edge cells 1. Each completed line adds 3 points. Score Minimax searches all
+remaining turns. Match rank uses total points and then total lines. An exact
+tie is decided randomly and labeled explicitly in the result. The player
+can choose the opening side and their mark independently. Round two switches the opening side and keeps both marks.
+
+### 对弈页感知预览
+
+展开相机旁的「感知预览」可查看仿真棋盘的透视校正、Canny 边缘和 YOLO 识别叠加。
+识别叠加显示标定格线、识别框及格子的行列编号。9×9 棋盘使用四个重叠区域推理，
+同格同时出现 X/O 时显示冲突。预览可以独立查看。
+
+使用默认 Final Project Gazebo 场景启动。校正使用该场景的固定相机参数及对局绘制范围。
+校正与边缘无需模型。识别叠加需在同一 Python 环境安装 Ultralytics，并在启动时指定
+训练好的权重和设备，例如：
+
+```bash
+ros2 launch tictactoe_gui canvas_sim.launch.py \
+  preview_weights:="$HOME/ros2_ws/src/play_tictactoe/data/training/yolo26n_sim_v1_baseline_20261118/weights/best.pt" \
+  preview_device:=0
+```
+
+### 仿真视觉落子
+
+给本地仿真页面配置 YOLO 权重后，普通 3×3 井字棋可以在开局前选择「模拟书写 · 相机识别」。点击空格让仿真机械臂代写玩家符号。机械臂回到 `zero` 后，程序从实时相机取帧，连续三帧确认原有棋子一致、只有一个新增玩家符号时，才把识别出的格位登记到对局并启动 AI 回合。每个回合单独验证，确认失败时暂停对局。
+
+默认落子方式是「网页点格」。视觉模式下，网页格位只供仿真代写使用，识别提交由仿真后台完成。

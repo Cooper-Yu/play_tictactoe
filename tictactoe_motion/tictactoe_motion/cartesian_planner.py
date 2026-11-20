@@ -134,20 +134,20 @@ class CartesianPlanner:
                 self.node.invalidate_plan()
             return False
 
-    def request_linear_position(self, target_position):
+    def request_linear_position(self, target_position, *, speed=None):
         """! @brief Plan a base_link XYZ line while preserving the achieved orientation."""
         try:
             start = self.start_pose()
             target = copy.deepcopy(start)
             target.position = copy.deepcopy(target_position)
-            return self.request_path([start, target], fixed_height=False)
+            return self.request_path([start, target], fixed_height=False, speed=speed)
         except (ValueError, TypeError) as error:
             self.node.get_logger().warning(str(error))
             if not self.node.is_planning and not self.node.trajectory_executor.is_executing:
                 self.node.invalidate_plan()
             return False
 
-    def request_path(self, poses, fixed_height=True):
+    def request_path(self, poses, fixed_height=True, *, speed=None):
         node = self.node
         if node.is_planning or node.is_recording or node.trajectory_executor.is_executing:
             node.get_logger().warning('Cannot plan Cartesian path while busy')
@@ -174,6 +174,10 @@ class CartesianPlanner:
             length = sum(math.dist(xyz(a), xyz(b)) for a, b in zip(poses, poses[1:]))
             if not 0 < length <= self.settings['cartesian_max_length']:
                 raise ValueError('Path length exceeds configured range')
+            speed = self.settings['cartesian_speed'] if speed is None else speed
+            if not math.isfinite(speed) or speed <= 0:
+                raise ValueError('Cartesian speed must be finite and positive')
+            self.minimum_duration = length / speed
             self.velocity = node.get_parameter('velocity_scaling').value
             self.acceleration = node.get_parameter('acceleration_scaling').value
             if not all(math.isfinite(v) and 0 < v <= 1 for v in (self.velocity, self.acceleration)):
@@ -246,7 +250,8 @@ class CartesianPlanner:
                 self.checks.append(row)
                 previous = point
             self.candidate = stretch_timing(trajectory, self.velocity, self.acceleration,
-                                            self.length/self.settings['cartesian_speed'])
+                                            0.0 if getattr(self, 'canvas_native_timing', False)
+                                            else self.minimum_duration)
             self.index, self.max_error, self.max_angle = 0, 0.0, 0.0
             self.fk_poses = []
             self.request_fk(generation)

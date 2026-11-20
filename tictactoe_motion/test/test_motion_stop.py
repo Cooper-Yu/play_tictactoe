@@ -240,3 +240,18 @@ def test_late_planning_results_and_acceptance_are_discarded(node):
     handle.cancel_goal_async.assert_called_once()
     assert node.planned_trajectory is None
     assert not node.is_planning
+
+def test_feedback_stop_can_wait_eight_seconds_without_delaying_cancel(node, monkeypatch):
+    clock = [100.]
+    monkeypatch.setattr(time, 'monotonic', lambda: clock[0])
+    execution, handle = active(node)
+    stop = execution.stop
+    assert stop.request(confirmation_timeout=30.)
+    assert stop.deadline == 130.
+    handle.cancel_goal_async.assert_called_once()
+    terminal(execution, handle)
+    clock[0] += 8.4
+    stop.tick()
+    assert execution.is_executing and not stop.blocked
+    settle(node)
+    assert not execution.is_executing

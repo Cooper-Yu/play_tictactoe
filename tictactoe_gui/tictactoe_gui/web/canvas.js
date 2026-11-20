@@ -31,6 +31,9 @@ function paint(){
  document.querySelectorAll('[data-asset]').forEach(b=>b.disabled=locked()||!!active||!dimensions);
  $('speed').disabled=locked();$('reset').disabled=!ready()||!remote.records?.Reset||!remote.records?.['reset悬空预备'];
  $('stop').disabled=pending||!remote.busy||remote.state==='stopping';
+ const canConfirm=remote.state==='recovering'&&remote.feedback_recovery?.phase==='confirmation';
+ $('ack-recovery').hidden=!canConfirm;
+ $('ack-recovery').disabled=pending||!canConfirm;
  $('status').textContent=localMessage||remote.message||'正在连接';
  $('connection').textContent=remote.state==='offline'?'工作台未连接':remote.fresh?'真机已连接':'等待机械臂反馈';
  $('connection').classList.toggle('ready',!!remote.fresh&&remote.state!=='offline');
@@ -56,13 +59,17 @@ async function command(path,data={}){
  if(pending)return;epoch++;pending=true;localMessage='正在提交…';paint();
  try{const ack=await jsonRequest(path,{method:'POST',headers:{'Content-Type':'application/json','X-Workbench-Token':token},body:JSON.stringify(data)});
   if(path==='api/canvas'){sentJob=ack.job;draftChanged=false;}
-  if(path==='api/command'){draftChanged=true;sentJob=null;}
-  remote={...remote,busy:true,state:path==='api/stop'?'stopping':'queued'};localMessage='';
+  if(data.kind!=='acknowledge_recovery'){
+   if(path==='api/command'){draftChanged=true;sentJob=null;}
+   remote={...remote,busy:true,state:path==='api/stop'?'stopping':'queued'};
+  }
+  localMessage='';
  }catch(e){localMessage=e.message;}finally{pending=false;paint();void poll();}
 }
 $('execute').onclick=()=>{if(strokes.reduce((n,s)=>n+s.length,0)>8000){localMessage='采样点超过 8000，请减少笔画';paint();return;}command('api/canvas',{strokes,speed:Number($('speed').value)});};
 $('reset').onclick=()=>command('api/command',{kind:'reset',speed:.05});
 $('stop').onclick=()=>command('api/stop',{});
+$('ack-recovery').onclick=()=>command('api/command',{kind:'acknowledge_recovery',job:remote.feedback_recovery.job});
 document.querySelectorAll('[data-asset]').forEach(button=>button.onclick=async()=>{
  if(locked())return;pending=true;localMessage='正在载入素材…';paint();
  try{const asset=await jsonRequest('api/canvas/asset/'+button.dataset.asset);strokes=asset.strokes;draftChanged=true;sentJob=null;

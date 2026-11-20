@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>机械臂对弈</title>
+  <link rel="stylesheet" href="/game.css">
+  <script src="/game.js" defer></script>
+</head>
+<body>
+  <header><h1>机械臂对弈</h1><a href="/">返回画布</a><span id="connection">正在连接 Gazebo</span></header>
+  <main>
+    <section class="play" aria-label="对弈棋盘">
+      <div class="board-heading"><h2 id="heading">井字棋</h2><span id="roles">你执 X · AI 执 O</span></div>
+      <div class="tablet"><div class="board-wrap"><div id="board" class="board" aria-label="棋盘"></div><span id="win-line" class="win-line" aria-hidden="true" hidden></span></div></div>
+      <p id="result" class="result" hidden></p>
+      <p id="status" role="status" aria-live="polite">正在连接本地仿真…</p>
+    </section>
+    <aside class="game-sidebar">
+      <section class="camera">
+        <div class="camera-heading"><h2>仿真相机</h2><button id="stop" class="stop" disabled>停止运动</button></div>
+        <div id="preview" class="preview"><p>正在等待 Gazebo 相机画面</p><img id="image" alt="Gazebo 平板与机械臂画面" hidden></div>
+      </section>
+      <details id="perception" class="camera perception">
+        <summary>感知预览</summary>
+        <label for="perception-view">处理视图
+          <select id="perception-view">
+            <option value="rectified">校正棋盘</option>
+            <option value="edges">边缘</option>
+            <option value="detections">识别叠加</option>
+          </select>
+        </label>
+        <div class="preview"><img id="perception-image" alt="处理后的棋盘画面" hidden>
+          <p id="perception-message">正在等待相机画面</p>
+        </div>
+        <p id="perception-caption">按当前仿真棋盘标定做透视校正。</p>
+      </details>
+      <section class="controls" aria-label="对弈设置">
+        <fieldset>
+          <legend>对弈模式</legend>
+          <label><input type="radio" name="size" value="3" checked><span>井字棋 <small>3 × 3 · Minimax</small></span></label>
+          <label><input type="radio" name="size" value="score"><span>分值井字棋 <small>3 × 3 · 两局换先</small></span></label>
+          <label><input type="radio" name="size" value="four"><span>四子棋 <small>9 × 9 · 四连胜</small></span></label>
+          <label id="three-stone-option" hidden><input type="radio" name="size" value="four-three-stone"><span>四子棋 · 三子开局 <small>9 × 9 · O 先落子</small></span></label>
+          <label><input type="radio" name="size" value="9"><span>五子棋 <small>9 × 9 · Rapfi</small></span></label>
+        </fieldset>
+        <div class="game-options">
+          <label id="first-option" for="first">先手
+            <select id="first"><option value="player">玩家</option><option value="ai">AI</option></select>
+          </label>
+          <label for="mark">你的符号
+            <select id="mark"><option value="X">X</option><option value="O">O</option></select>
+          </label>
+          <label id="input-option" for="input-source" hidden>玩家落子方式
+            <select id="input-source">
+              <option value="click">网页点格</option>
+              <option value="vision">模拟书写 · 相机识别</option>
+            </select>
+          </label>
+        </div>
+        <p id="three-stone-rules" hidden>选定你的符号开局后，机械臂摆好两枚 X 和一枚 O。由 O 落第一手，率先连四获胜。</p>
+        <button id="start" class="start" disabled>开局</button>
+        <button id="reset" class="quiet" disabled>清屏并退出对局</button>
+      </section>
+      <section id="points" class="controls points" aria-labelledby="score-round" hidden>
+        <h2 id="score-round">第 1 / 2 局</h2>
+        <div class="score-pair">
+          <div><span>你</span><strong id="score-player">0</strong></div>
+          <div><span>AI</span><strong id="score-ai">0</strong></div>
+        </div>
+        <p id="score-lines"></p>
+        <p id="score-total"></p>
+        <p>每人落 4 子。每条三连加 3 分，两局交换先手。</p>
+        <button id="next" class="start" hidden>开始第二局 · AI 先手</button>
+      </section>
+
+
+    </aside>
+  </main>
+</body>
+</html>

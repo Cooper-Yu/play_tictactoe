@@ -86,7 +86,22 @@ class SimulatedBoard:
         path=self.directory/(name+'.dae')
         points=sampled_xy(samples);triangles=write_ribbon(path,points,z+.0004,round_joins=True)
         self.files.append(path)
-        paths=self.active_files+[path] if self.grouped else [path]
+        self._spawn_paths(name, [path])
+        return {'model':name,'points':len(points),'triangles':triangles,'source':'actual link6 XY feedback'}
+
+    def set_grid(self, lines):
+        """Render the known grid as static simulation geometry."""
+        self.clear()
+        paths = []
+        for points in lines:
+            path = self.directory / f'ptt_ink_{self.token}_{len(self.files)}.dae'
+            write_ribbon(path, points, self.profile['safe_corners'][0][2]+.0004)
+            self.files.append(path)
+            paths.append(path)
+        self._spawn_paths(f'ptt_grid_{self.token}_{len(self.files)}', paths)
+
+    def _spawn_paths(self, name, added_paths):
+        paths = self.active_files + added_paths if self.grouped else added_paths
         visuals=''.join(f'''<visual name="trace{i}"><cast_shadows>false</cast_shadows><geometry><mesh><uri>{mesh.as_uri()}</uri></mesh></geometry><material><lighting>false</lighting><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual>''' for i,mesh in enumerate(paths))
         sdf=f'''<sdf version="1.6"><model name="{name}"><static>true</static><link name="ink">{visuals}</link></model></sdf>'''
         response=self.wait(self.spawn.call_async(SpawnEntity.Request(name=name,xml=sdf,reference_frame='world')))
@@ -98,7 +113,6 @@ class SimulatedBoard:
                 deleted=self.wait(self.delete.call_async(DeleteEntity.Request(name=old)))
                 if not deleted.success:raise RuntimeError(deleted.status_message)
                 self.models.remove(old)
-        return {'model':name,'points':len(points),'triangles':triangles,'source':'actual link6 XY feedback'}
 
     def clear(self):
         for name in list(self.models):
