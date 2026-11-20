@@ -72,7 +72,7 @@ def test_wrong_driver_orientation_height_or_cancel_produces_no_motion():
 
 @pytest.mark.parametrize('key,value',[
     ('canvas_axes','positive_x_negative_y'),('drawing_link6_z_m',.21),
-    ('hover_link6_z_m',.206),('max_velocity_scaling',.11),
+    ('hover_link6_z_m',.206),('max_velocity_scaling',1.01),
     ('required_orientation_xyzw',[0,0,0,0]),('orientation_tolerance_rad',float('nan'))])
 def test_incomplete_or_inconsistent_real_profile_rejected(key,value):
     p=copy.deepcopy(profile());p[key]=value
