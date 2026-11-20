@@ -265,3 +265,20 @@ def test_120mm_circle_remains_closed_and_has_segmented_backup():
     assert len(a.prepared)==1
     assert len(a.drawings[0].fallback[1])>=6
     assert a.prepared[0]['points'][0]==pytest.approx(a.prepared[0]['points'][-1])
+
+def test_continuous_candidate_uses_bounded_excursion_only_before_fallback():
+    from geometry_msgs.msg import Pose
+    from tictactoe_motion.actions.stroke_drawing import StrokeDrawing
+    class Driver:
+        def __init__(self):self.pose=Pose();self.calls=[]
+        def current_pose(self):return self.pose
+        def linear(self, point):self.pose.position=point;return {'passed':True}
+        def path(self, poses, **options):
+            self.calls.append(options)
+            if options.get('allow_plan_retry'):return None
+            self.pose=poses[-1];return {'passed':True}
+    p=[Pose(),Pose(),Pose()];p[1].position.x=.04;p[2].position.x=.08
+    upper=Pose();upper.position.z=.01;d=Driver()
+    StrokeDrawing('cross').run_strokes(d,[p],upper,lambda:False,lambda _:None,
+        {1:[p[:2],p[1:]]},candidate_excursion_limit=1.)
+    assert d.calls==[{'allow_plan_retry':True,'excursion_limit':1.},{},{}]

@@ -22,6 +22,9 @@ class CanvasDrawing(StrokeDrawing):
         self.paths=[canvas.stroke(points,snap=snap, **length_options) for points in strokes]
         self.fallback = {i: [canvas.stroke(points, snap=snap, **length_options) for points in parts]
                          for i, parts in (fallback or {}).items()}
+        self.continuous_excursion_limit = canvas.profile.get('continuous_stroke_joint_excursion_rad', .5)
+        if not .5 <= self.continuous_excursion_limit <= 1.:
+            raise ValueError('Continuous stroke joint excursion must be in [0.5, 1.0] rad')
         self.upper_z=upper_z
         self.transfer_z = transfer_z
         self.exit_to_transfer = exit_to_transfer
@@ -157,4 +160,5 @@ class CanvasDrawing(StrokeDrawing):
 
         strokes = [poses(path) for path in self.paths]
         fallback = {i: [poses(path) for path in parts] for i, parts in self.fallback.items()}
-        return self.run_strokes(driver, strokes, upper, cancelled, on_stage, fallback)
+        return self.run_strokes(driver, strokes, upper, cancelled, on_stage, fallback,
+                                candidate_excursion_limit=self.continuous_excursion_limit)

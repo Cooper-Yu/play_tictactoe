@@ -17,3 +17,6 @@ transfer_link6_z_m: 0.216
 required_orientation_xyzw: [0.0, 1.0, 0.0, 0.0]
 orientation_tolerance_rad: 0.03
 max_velocity_scaling: 1.0
+
+# Bounded total travel for fully checked continuous canvas candidates.
+continuous_stroke_joint_excursion_rad: 1.0

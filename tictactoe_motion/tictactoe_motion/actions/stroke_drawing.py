@@ -42,7 +42,8 @@ class StrokeDrawing:
 
         return self.run_strokes(driver, self.strokes, upper, cancelled, on_stage)
 
-    def run_strokes(self, driver, strokes, upper, cancelled, on_stage, fallback=None):
+    def run_strokes(self, driver, strokes, upper, cancelled, on_stage, fallback=None, *,
+                    candidate_excursion_limit=.5):
         """! @brief Execute prepared strokes after an explicit elevated approach."""
         self.strokes = copy.deepcopy(strokes)
         def step(name, action):
@@ -74,9 +75,14 @@ class StrokeDrawing:
             vertical(f'{i}_lower', depth_z)
             if i in fallback:
                 def draw():
-                    result = driver.path(stroke, allow_plan_retry=True)
+                    options = {'allow_plan_retry': True}
+                    if candidate_excursion_limit != .5:
+                        options['excursion_limit'] = candidate_excursion_limit
+                    result = driver.path(stroke, **options)
                     if result is None:
-                        return {'passed': True, 'planned_only': True, 'fallback': True}
+                        planner = getattr(getattr(driver, 'node', None), 'cartesian_planner', None)
+                        reason = (getattr(planner, 'last_report', None) or {}).get('reason', 'Full candidate rejected')
+                        return {'passed': True, 'planned_only': True, 'fallback': True, 'reason': reason}
                     return result
 
                 step(f'{i}_draw', draw)
