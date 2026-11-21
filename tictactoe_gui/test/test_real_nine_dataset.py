@@ -46,3 +46,10 @@ def test_incomplete_groups_cannot_be_exported_as_frozen_test_set(tmp_path):
     (tmp_path/'manifest.json').write_text('[]')
     with pytest.raises(ValueError,match='twelve'):
         module.prepare(tmp_path,tmp_path/'missing',tmp_path/'out',None,None,None)
+
+def test_edge_split_requires_all_eight_groups_and_keeps_a_real_test_set(tmp_path):
+    (tmp_path/'manifest.json').write_text('[]')
+    with pytest.raises(ValueError,match='all 8 complete'):
+        module.prepare(tmp_path,tmp_path/'missing',tmp_path/'out',None,None,None,expected_counts=(4,2,2))
+    with pytest.raises(ValueError,match='positive train'):
+        module.prepare(tmp_path,tmp_path/'missing',tmp_path/'out',None,None,None,expected_counts=(8,0,0))

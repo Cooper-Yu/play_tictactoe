@@ -67,14 +67,18 @@ def crop_labels(boxes, region):
     return labels
 
 
-def prepare(raw, review_file, output, points_file, board_file, old_train):
+def prepare(raw, review_file, output, points_file, board_file, old_train, *, expected_counts=(8,2,2)):
     raw, output = Path(raw).resolve(), Path(output).resolve()
     if output.exists():
         raise FileExistsError(output)
+    if len(expected_counts) != 3 or any(not isinstance(n,int) or n < 1 for n in expected_counts):
+        raise ValueError('Require positive train, validation and test group counts')
     manifest = json.loads((raw/'manifest.json').read_text())
     complete = [x for x in manifest if x['complete']]
-    if len(complete) != 12 or len({x['group'] for x in complete}) != 12:
-        raise ValueError('Require all twelve complete, independent capture groups')
+    required = sum(expected_counts)
+    if len(complete) != required or len({x['group'] for x in complete}) != required:
+        number = 'twelve' if required == 12 else str(required)
+        raise ValueError(f'Require all {number} complete, independent capture groups')
     reviews = json.loads(Path(review_file).read_text())
     points = np.float32(json.loads(Path(points_file).read_text()))
     transform = cv2.getPerspectiveTransform(points,np.float32([[140,189],[280,189],[280,378],[140,378]]))
@@ -126,7 +130,7 @@ def prepare(raw, review_file, output, points_file, board_file, old_train):
                     raise ValueError('Identical crop crosses split boundary')
                 hashes[value] = split
                 split_lists[split].append(str(file))
-    if {s:len(g) for s,g in groups.items()} != dict(train=8,val=2,test=2):
+    if {s:len(g) for s,g in groups.items()} != dict(zip(('train','val','test'),expected_counts)):
         raise ValueError('Source split membership changed')
     if any(groups[a]&groups[b] for a,b in (('train','val'),('train','test'),('val','test'))):
         raise ValueError('Physical capture group leakage')
@@ -151,5 +155,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for option in ('raw','review','output','points','board','old-train'):
         parser.add_argument('--'+option,required=True,type=Path)
+    parser.add_argument('--split-groups',nargs=3,type=int,default=(8,2,2),metavar=('TRAIN','VAL','TEST'))
     args = parser.parse_args()
-    prepare(args.raw,args.review,args.output,args.points,args.board,args.old_train)
+    prepare(args.raw,args.review,args.output,args.points,args.board,args.old_train,expected_counts=tuple(args.split_groups))
