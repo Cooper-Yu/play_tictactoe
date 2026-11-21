@@ -1,3 +1,28 @@
+# Perception model assets
+
+Current layout (2026-11-22):
+
+- `xo_newest.pt`: shared default detector for 3x3 and 9x9.
+- `archive/xo_real.pt`: preserved earlier large-mark detector.
+- `archive/xo_real_nine.pt`: preserved earlier native-9x9 detector.
+
+`xo_newest.pt` is the exact, byte-identical rename of
+`xo_real_nine_zero_candidate.pt`, SHA256
+`1efa1bca908cb9efb8c2d1d10bf8676eb8026f44ed21fbfe7bcf179fab25b036`.
+No retraining or weights modification occurred. Historical experiment reports
+keep their original checkpoint names; use this hash to identify the same model.
+
+The models are installed under `share/tictactoe_perception/models/`.
+Both GUI launch files resolve this perception-package share directory. Override
+the real launch `weights` or simulation `preview_weights` argument to select an
+archived model explicitly. The GUI package no longer distributes weights.
+The existing GUI dependency on tictactoe_perception already covers this asset.
+
+`xo_newest.pt` is a stable default filename, not an automatic search for the most
+recent checkpoint. A future replacement must be explicitly reviewed and selected.
+
+## Historical training and evaluation notes (original filenames)
+
 # Real-robot cloud GUI assets
 
 - xo_real.pt: project-trained YOLO26n X/O detector, mixed real/simulation fine-tuning.

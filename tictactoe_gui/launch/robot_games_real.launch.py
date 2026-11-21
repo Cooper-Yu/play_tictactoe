@@ -11,6 +11,7 @@ from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
     share = Path(get_package_share_directory('tictactoe_gui'))
+    perception_share = Path(get_package_share_directory('tictactoe_perception'))
     return LaunchDescription([
         DeclareLaunchArgument('public_url', description='Exact output of webpage_address'),
         DeclareLaunchArgument('output_dir', default_value=str(
@@ -18,7 +19,7 @@ def generate_launch_description():
         DeclareLaunchArgument('grid_points', default_value=str(share/'config/grid_points_real.json')),
         DeclareLaunchArgument('cpu_threads', default_value='2'),
         DeclareLaunchArgument('weights', default_value=str(
-            share/'models/xo_real_nine_zero_candidate.pt'),
+            perception_share/'models/xo_newest.pt'),
             description='Shared X/O detector for both 3x3 and 9x9 games'),
         SetEnvironmentVariable('PYTHONPATH', [
             str(Path.home()/'ros2_ws/src/play_tictactoe/.cloud-python'),

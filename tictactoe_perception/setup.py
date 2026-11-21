@@ -14,6 +14,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', [path for path in glob('launch/*.launch.py') if Path(path).is_file()]),
         ('share/' + package_name + '/config', glob('config/*.yaml')),
+        ('share/' + package_name + '/models', glob('models/*.pt') + ['models/README.md']),
+        ('share/' + package_name + '/models/archive', glob('models/archive/*.pt')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

@@ -20,7 +20,8 @@ COHORTS = {
     'nine_edges': 'xo_real_nine_edges_20261122/prepared_v1',
     'nine_zero': 'xo_real_nine_zero_20261122/prepared_v1',
 }
-MODELS = ['xo_real.pt', 'xo_real_nine.pt', 'xo_real_nine_zero_candidate.pt']
+MODELS = ['xo_real.pt', 'xo_real_nine.pt', 'xo_newest.pt']
+MODEL_FILES = {name: ('archive/'+name if name != 'xo_newest.pt' else name) for name in MODELS}
 
 
 def sha(path):
@@ -172,7 +173,7 @@ def run(repo,output,device):
     torch.set_num_threads(2)
     all_results={}
     for name in MODELS:
-        weights=repo/'tictactoe_gui/models'/name
+        weights=repo/'tictactoe_perception/models'/MODEL_FILES[name]
         recorder=RecordingModel(YOLO(str(weights)))
         detector=RealBoardPerception(str(weights),points,device=device);detector.model=recorder
         rows=[];started=time.monotonic()
