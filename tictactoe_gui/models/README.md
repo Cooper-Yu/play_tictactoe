@@ -43,3 +43,11 @@ No separate local GUI process is required.
   Local data/training/yolo26n_real_nine_v1_20261121 retains args, curves, and checkpoints.
 - These offline results are not a guarantee for dense boards, changed lighting,
   camera movement, arm occlusion, or every live game. Live game validation is separate.
+
+## Zero-observation candidate for explicit live comparison (2026-11-22)
+
+- xo_real_nine_zero_candidate.pt SHA256: 1efa1bca908cb9efb8c2d1d10bf8676eb8026f44ed21fbfe7bcf179fab25b036.
+- 40-epoch fine-tune of deployed 9x9 detector; 12 real zero-pose capture layouts, grouped 8/2/2.
+- New held-out reviewed cells: 24TP/0FN/0FP on 10 correlated frames from two layouts; 16 unreadable cell observations excluded. This is not full-board accuracy.
+- Experimental full-frame historical 3x3 regression: 35/45 exact versus current 3x3 model 39/45. Not a default replacement for either production model.
+- Included for user-authorized cloud game testing; launch with an explicit weights path. Existing xo_real.pt and xo_real_nine.pt unchanged.
