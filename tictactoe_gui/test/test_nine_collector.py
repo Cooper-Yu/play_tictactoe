@@ -99,3 +99,25 @@ def test_edge_split_cannot_silently_become_train_only(tmp_path):
     with pytest.raises(ValueError,match='eight independent groups'):
         module.collect(tmp_path,4,deadline_epoch=1795243979.,layout_profile='edge')
     assert not FakeClient.calls
+
+def test_capture_window_waits_before_submission_and_remains_cancellable(monkeypatch):
+    clock=[100.]
+    monkeypatch.setattr(module.time,'time',lambda:clock[0])
+    monkeypatch.setattr(module.time,'sleep',lambda t:clock.__setitem__(0,clock[0]+t))
+    module.wait_for_capture_window(dict(kind='canvas',strokes=[[]]*3),[(120.,125.)],lambda:False)
+    assert 125.<clock[0]<126.
+    clock[0]=100.
+    with pytest.raises(RuntimeError,match='cancelled'):
+        module.wait_for_capture_window(dict(kind='canvas',strokes=[[]]*3),[(120.,125.)],lambda:True)
+    assert clock[0]==100.
+
+
+def test_execute_is_not_delayed_after_a_plan(monkeypatch):
+    monkeypatch.setattr(module.time,'sleep',lambda t:pytest.fail('Cannot age a previously accepted plan'))
+    module.wait_for_capture_window(dict(kind='execute'),[(1795238190.,1795238210.)],lambda:False)
+
+
+def test_invalid_capture_windows_cannot_start_motion(tmp_path):
+    with pytest.raises(ValueError,match='finite start/end'):
+        module.collect(tmp_path,deadline_epoch=1795243979.,avoid_windows=[(1.,float('inf'))])
+    assert not FakeClient.calls

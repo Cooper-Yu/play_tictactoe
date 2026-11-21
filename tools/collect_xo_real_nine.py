@@ -13,7 +13,27 @@ import time
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
 from tictactoe_game.grid_game import GridGame
 
-def collect(output, groups=12, *, deadline_epoch, guard_file=None, layout_profile='mixed'):
+def wait_for_capture_window(command, windows, cancelled):
+    """Delay only a new submission, retaining all runtime feedback safeguards."""
+    kind = command['kind']
+    budget = (200 if len(command.get('strokes', ())) >= 16 else 60) if kind == 'canvas' else {'reset':40,'preset':15}.get(kind,0)
+    if not budget:
+        return
+    waiting = False
+    while any(time.time() <= end and time.time()+budget >= start for start,end in windows):
+        if cancelled():
+            raise RuntimeError('Collection cancelled while awaiting a capture window')
+        if not waiting:
+            print('CAPTURE_WINDOW_WAIT',kind,'at',time.time(),flush=True)
+            waiting = True
+        time.sleep(.25)
+    if waiting:
+        print('CAPTURE_WINDOW_READY',kind,'at',time.time(),flush=True)
+
+
+def collect(output, groups=12, *, deadline_epoch, guard_file=None, layout_profile='mixed', avoid_windows=()):
+    if any(len(w) != 2 or not all(math.isfinite(v) for v in w) or w[0] >= w[1] for w in avoid_windows):
+        raise ValueError('Avoid windows require finite start/end pairs')
     if not math.isfinite(deadline_epoch) or deadline_epoch <= time.time():
         raise ValueError('Collection deadline must be finite and in the future')
     if layout_profile not in ('mixed', 'edge') or (layout_profile == 'edge' and groups != 8):
@@ -29,6 +49,12 @@ def collect(output, groups=12, *, deadline_epoch, guard_file=None, layout_profil
     # Preserve job evidence when a new booking restarts workstation job numbering.
     run_output = output/'motion'/f'run-{time.time_ns()}'
     client = Workstation('http://127.0.0.1:8765/', run_output, cancelled=cancelled)
+    if avoid_windows:
+        submit = client.command
+        def scheduled_command(**command):
+            wait_for_capture_window(command, avoid_windows, cancelled)
+            return submit(**command)
+        client.command = scheduled_command
     actions = RemoteDrawing(client)
     game = GridGame(actions, width=actions.width-.004, height=actions.height-.004,
                     rows=9, columns=9, win_length=4)
@@ -124,6 +150,8 @@ if __name__ == '__main__':
     parser.add_argument('--deadline-epoch', type=float, required=True)
     parser.add_argument('--guard-file', type=Path)
     parser.add_argument('--layout-profile',choices=('mixed','edge'),default='mixed')
+    parser.add_argument('--avoid-windows',type=Path,help='Booking-specific submission pause windows; feedback guard remains active')
     args = parser.parse_args()
     collect(args.output, args.groups, deadline_epoch=args.deadline_epoch,
-            guard_file=args.guard_file, layout_profile=args.layout_profile)
+            guard_file=args.guard_file, layout_profile=args.layout_profile,
+            avoid_windows=json.loads(args.avoid_windows.read_text()) if args.avoid_windows else ())
