@@ -39,3 +39,28 @@ def test_camera_overlay_preserves_perspective_and_confidence(monkeypatch):
     assert labels == ['X 0.86']
     assert not raw.any()
     assert output.any()
+
+
+def test_nine_detector_is_isolated_from_classic_and_preview_routes(monkeypatch, tmp_path):
+    from tictactoe_gui.perception_preview import PerceptionPreview
+    points=[[110,80],[190,80],[200,150],[100,150]]
+    nine=tmp_path/'nine.pt';nine.write_bytes(b'test routing only')
+    detector=RealBoardPerception('classic.pt',points,nine_weights=nine)
+    calls=[]
+    def detect(self, raw, transform, size):
+        calls.append((str(self.weights),size))
+        return {}
+    monkeypatch.setattr(PerceptionPreview,'_detect',detect)
+    raw=np.zeros((240,424,3),np.uint8)
+    detector._detect(raw,detector.transform,3)
+    detector._detect(raw,detector.transform,9)
+    detector.camera_overlay(raw,detector.transform,9)
+    detector.overlay(raw,raw.copy(),detector.transform,9)
+    assert calls==[('classic.pt',3),(str(nine),9),(str(nine),9),(str(nine),9)]
+    assert detector.model is None and detector.nine_preview.model is None
+
+
+def test_missing_nine_weights_fail_before_game_start():
+    import pytest
+    with pytest.raises(ValueError,match='9x9 YOLO weights are missing'):
+        RealBoardPerception('classic.pt',[[110,80],[190,80],[200,150],[100,150]],nine_weights='/missing/nine.pt')

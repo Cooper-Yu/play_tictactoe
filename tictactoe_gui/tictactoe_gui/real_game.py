@@ -119,6 +119,8 @@ def real_game_worker(session, *, url, perception, restore=None):
         session.update(state='connecting', message='Warming up YOLO inference; robot controls remain idle')
         warmup_started = time.monotonic()
         perception.detect_cells(session.camera_image())
+        if getattr(perception, 'nine_preview', None) is not None:
+            perception.detect_cells(session.camera_image(), size=9)
         session.update(inference_warmup_s=time.monotonic()-warmup_started)
         if restore:
             saved = json.loads(Path(restore).read_text())['game']
@@ -206,6 +208,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workstation-url', required=True)
     parser.add_argument('--weights', required=True)
+    parser.add_argument('--nine-weights', help='Optional detector fine-tuned for native 9x9 crops')
     parser.add_argument('--grid-points', required=True)
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--output', required=True)
@@ -219,7 +222,7 @@ def main():
         import torch
         torch.set_num_threads(args.cpu_threads)
     points = json.loads(Path(args.grid_points).read_text())
-    preview = RealBoardPerception(args.weights, points, device=args.device)
+    preview = RealBoardPerception(args.weights, points, device=args.device, nine_weights=args.nine_weights)
     if not preview.weights.is_file():
         raise ValueError('YOLO weights are missing')
     Path(args.output).expanduser().mkdir(parents=True, exist_ok=True)

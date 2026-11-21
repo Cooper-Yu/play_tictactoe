@@ -28,6 +28,7 @@ def generate_launch_description():
             sys.executable, '-m', 'tictactoe_gui.real_game',
             '--workstation-url', 'http://127.0.0.1:8765/',
             '--weights', str(share/'models/xo_real.pt'),
+            '--nine-weights', str(share/'models/xo_real_nine.pt'),
             '--grid-points', LaunchConfiguration('grid_points'),
             '--device', 'cpu', '--cpu-threads', LaunchConfiguration('cpu_threads'),
             '--port', '8775', '--output', LaunchConfiguration('output_dir')],
