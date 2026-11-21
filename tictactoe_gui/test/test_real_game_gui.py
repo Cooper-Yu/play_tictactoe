@@ -17,7 +17,8 @@ def test_real_session_rejects_direct_state_move(tmp_path):
         s.submit('game_start', game_request={'size':3, 'input_source':'click'})
 
 
-def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp_path):
+@pytest.mark.parametrize("size,mode,cell", [(3,"classic",0), (9,"four",8)])
+def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp_path, size, mode, cell):
     world = SimpleNamespace(cells={}, sequence=0, moves=[], detection_sequences=[])
     class Response:
         content = b'camera'
@@ -50,14 +51,14 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
         def draw_grid(self, *args, **kwargs):
             return {'passed':True}
         def draw_x(self, *args, **kwargs):
-            world.cells[(0,0)] = frozenset(('X',))
+            world.cells[(cell,cell)] = frozenset(('X',))
             return {'passed':True}
         def draw_o(self, *args, **kwargs):
             assert len(set(world.detection_sequences)) >= 3
             world.moves.append('O')
             return {'passed':True}
     class Perception:
-        def detect_cells(self, image):
+        def detect_cells(self, image, size=3):
             if world.cells:
                 world.detection_sequences.append(world.sequence)
             return dict(world.cells)
@@ -75,13 +76,13 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
             time.sleep(.02)
     try:
         wait(lambda:s.status()['state']=='ready')
-        s.submit('game_start', game_request={'size':3,'input_source':'vision'})
+        s.submit('game_start', game_request={'size':size,'mode':mode,'input_source':'vision'})
         wait(lambda:not s.status()['busy'])
         revision=s.status()['game']['revision']
-        s.submit('game_vision_move', game_request={'row':0,'col':0,'revision':revision})
+        s.submit('game_vision_move', game_request={'row':cell,'col':cell,'revision':revision})
         wait(lambda:not s.status()['busy'])
         assert s.status()['state']=='ready', s.status()
-        assert s.status()['game']['board'][0][0]=='X'
+        assert s.status()['game']['board'][cell][cell]=='X'
         assert sum(mark=='O' for row in s.status()['game']['board'] for mark in row)==1
         assert world.moves==['reset','O']
         assert s.status()['vision']['consecutive']==3
@@ -106,3 +107,13 @@ def test_offline_startup_retains_finished_board_without_motion(monkeypatch, tmp_
     assert s.status()['game']['board']==board
     assert s.camera_image()==b'saved-camera'
     assert s.status()['state']=='offline'
+
+
+def test_blocked_session_can_explicitly_clear_but_not_resume(tmp_path):
+    session = CanvasSession(tmp_path, None, environment='real', vision_available=True)
+    session.update(state='blocked', busy=False)
+    with pytest.raises(RuntimeError):
+        session.submit('game_start', game_request={'size':3,'input_source':'vision'})
+    assert session.submit('reset') == 1
+    with pytest.raises(RuntimeError):
+        session.submit('reset')

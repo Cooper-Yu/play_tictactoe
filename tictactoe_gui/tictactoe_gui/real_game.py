@@ -89,7 +89,7 @@ def real_game_worker(session, *, url, perception, restore=None):
         if not image or not state.get('camera_fresh') or sequence == gate.last_sequence:
             return None
         detect_started = time.monotonic()
-        cells = perception.detect_cells(image)
+        cells = perception.detect_cells(image, size=current["size"])
         found = gate.observe(sequence, cells)
         timing.emit('vision_frame', sequence=sequence, seconds=time.monotonic()-detect_started,
                     consecutive=gate.count, confirmed=found)
@@ -161,7 +161,8 @@ def real_game_worker(session, *, url, perception, restore=None):
                 elif kind == 'game_start':
                     client.command(kind='reset', speed=.1)
                     client.park('clear')
-                    game.start(3, job['job'], mode='classic', first=request.get('first', 'player'),
+                    game.start(request.get('size', 3), job['job'], mode=request.get('mode', 'classic'),
+                               first=request.get('first', 'player'),
                                mark=request.get('mark', 'X'), input_source='vision')
                     gate_revision = None
                 elif kind == 'game_vision_move':

@@ -16,6 +16,9 @@ WIN_LENGTHS = {
 }
 
 
+VISION_MODES = frozenset((("classic", 3), ("four", 9)))
+
+
 class GameCoordinator:
     """Own the game on the worker thread and publish snapshots after verified marks."""
 
@@ -79,9 +82,9 @@ class GameCoordinator:
         if first not in ("player", "ai") or mark not in ("X", "O"):
             raise ValueError("Invalid turn order or symbol")
         if input_source not in ("click", "vision") or (
-            input_source == "vision" and (mode != "classic" or size != 3)
+            input_source == "vision" and (mode, size) not in VISION_MODES
         ):
-            raise ValueError("Visual moves support only classic 3×3 Tic-Tac-Toe")
+            raise ValueError("Visual moves support classic 3×3 Tic-Tac-Toe or 9×9 four-in-a-row")
         self.input_source = input_source
         self.mode = mode
         self.human = mark if mode == THREE_STONE_MODE else ("X" if first == "player" else "O")
@@ -173,9 +176,9 @@ class GameCoordinator:
         self._player_move(row, col, revision, observed=False)
 
     def register_observed_move(self, row, col, mark, revision):
-        '''Register an already-drawn player mark in the 3x3 vision pilot.'''
-        if self.game is None or self.mode != "classic" or self.game.rows != 3:
-            raise ValueError("Visual move pilot supports only classic 3×3 Tic-Tac-Toe")
+        '''Register an already-drawn player mark in a supported visual game.'''
+        if self.game is None or (self.mode, self.game.rows) not in VISION_MODES:
+            raise ValueError("Unsupported board for visual move registration")
         if mark != self.player_mark:
             raise ValueError("Detected symbol does not match the player symbol")
         self._player_move(row, col, revision, observed=True)

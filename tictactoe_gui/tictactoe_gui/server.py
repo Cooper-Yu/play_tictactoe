@@ -2,7 +2,7 @@
 import argparse
 from functools import partial
 
-from tictactoe_coordinator.game_coordinator import WIN_LENGTHS
+from tictactoe_coordinator.game_coordinator import WIN_LENGTHS, VISION_MODES
 import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
@@ -62,13 +62,15 @@ class CanvasSession:
     def submit(self, kind, strokes=None, game_request=None):
         if self.environment == 'real':
             if kind not in ('game_start', 'game_vision_move', 'reset'):
-                raise ValueError('Real games support only visually confirmed classic Tic-Tac-Toe')
-            if kind == 'game_start' and (game_request.get('mode', 'classic') != 'classic'
-                    or game_request['size'] != 3 or game_request.get('input_source') != 'vision'):
-                raise ValueError('Real games require 3×3 and camera recognition mode')
+                raise ValueError('Real games require visually confirmed moves')
+            if kind == 'game_start' and (
+                    (game_request.get('mode', 'classic'), game_request['size']) not in VISION_MODES
+                    or game_request.get('input_source') != 'vision'):
+                raise ValueError('Real games require a supported board and camera recognition mode')
         prepared = prepare_strokes(strokes) if kind == 'draw' else []
         with self.lock:
-            if self.state['busy'] or self.state['state'] in ('connecting', 'offline', 'blocked'):
+            if self.state['busy'] or self.state['state'] in ('connecting', 'offline') or (
+                    self.state['state'] == 'blocked' and kind != 'reset'):
                 raise RuntimeError('Not ready or another task is running')
             current = self.state["game"]
             if kind == "draw" and current is not None:
@@ -80,8 +82,8 @@ class CanvasSession:
             if kind == "game_start" and game_request.get("input_source", "click") == "vision":
                 if not self.vision_available:
                     raise RuntimeError("Configure first YOLO Weights")
-                if game_request.get("mode", "classic") != "classic" or game_request["size"] != 3:
-                    raise ValueError("Visual moves support only classic 3×3 Tic-Tac-Toe")
+                if (game_request.get("mode", "classic"), game_request["size"]) not in VISION_MODES:
+                    raise ValueError("Visual moves support classic 3×3 Tic-Tac-Toe or 9×9 four-in-a-row")
             if kind in ("game_move", "game_vision_move"):
                 row, col, revision = (game_request[k] for k in ("row", "col", "revision"))
                 if (current is None or current["revision"] != revision
@@ -141,7 +143,7 @@ def make_handler(session, preview=None):
             if self.path == '/api/config':
                 return self.send(200, dict(token=session.token, width_mm=getattr(session, 'width_mm', 144), height_mm=getattr(session, 'height_mm', 193),
                                            workstation_url=getattr(session, 'workstation_url', ''),
-                                           environment=session.environment, vision_available=session.vision_available, game_modes=(['classic'] if session.environment == 'real' else sorted({mode for mode, _ in WIN_LENGTHS}))))
+                                           environment=session.environment, vision_available=session.vision_available, game_modes=(['classic', 'four'] if session.environment == 'real' else sorted({mode for mode, _ in WIN_LENGTHS}))))
             path = urlparse(self.path).path
             if path == '/api/game/perception' and preview is not None:
                 return self.send_preview()

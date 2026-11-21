@@ -128,7 +128,7 @@ function render() {
   activeMode = mode;
   const isThreeStone = chosenMode() === 'four-three-stone';
   get('first-option').hidden = isThreeStone;
-  get('input-option').hidden = !visionAvailable || chosenMode() !== '3';
+  get('input-option').hidden = !visionAvailable || !['3', 'four'].includes(chosenMode());
   const vision = game?.input_source === 'vision';
   get('three-stone-rules').hidden = !isThreeStone;
   const size = game?.size ?? selected();
@@ -185,7 +185,9 @@ function render() {
   start.disabled = !ready || busy;
   start.textContent = game ? 'New game' : 'Start game';
   stop.disabled = !online || !state?.busy;
-  reset.disabled = !ready || busy || !game;
+  const resetReady = online && token && state && !['connecting','offline'].includes(state.state)
+    && (!realEnvironment || (state.camera_fresh && state.robot_fresh));
+  reset.disabled = !resetReady || busy || (!game && state.state !== 'blocked');
   const points = get('points');
   points.hidden = !showPoints;
   const playerScore = game?.current_score?.player ?? {points: 0, lines: 0};
@@ -272,7 +274,7 @@ async function refresh() {
       get('input-source').querySelector('[value=click]').disabled = true;
       get('input-source').querySelector('[value=vision]').textContent = 'Robot proxy drawing · Camera confirmation';
       document.querySelectorAll('input[name=size]').forEach(input => {
-        if (input.value !== '3') input.closest('label').hidden = true;
+        if (!['3', 'four'].includes(input.value)) input.closest('label').hidden = true;
       });
       get('canvas-link').textContent = 'Calibration workbench';
       get('canvas-link').href = config.workstation_url;
@@ -348,7 +350,7 @@ start.addEventListener('click', () => {
   if (!state?.game || window.confirm('Clear the current board and start a new game？')) {
     act('/api/game/start', {size: selected(), mode: ['score', 'four', 'four-three-stone'].includes(chosenMode()) ? chosenMode() : 'classic',
       first: get('first').value, mark: get('mark').value,
-      input_source: visionAvailable && chosenMode() === '3' ? get('input-source').value : 'click'});
+      input_source: visionAvailable && ['3', 'four'].includes(chosenMode()) ? get('input-source').value : 'click'});
   }
 });
 get('next').addEventListener('click', () => act('/api/game/next', {revision: state.game.revision}));
