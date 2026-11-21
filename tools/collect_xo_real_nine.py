@@ -5,6 +5,7 @@ A failed motion is logged and never replayed automatically.
 """
 import argparse
 import json
+import math
 from pathlib import Path
 import random
 import time
@@ -12,16 +13,20 @@ import time
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
 from tictactoe_game.grid_game import GridGame
 
-CUTOFF = 1795243979.0
-
-
-def collect(output, groups=12):
+def collect(output, groups=12, *, deadline_epoch, guard_file=None):
+    if not math.isfinite(deadline_epoch) or deadline_epoch <= time.time():
+        raise ValueError('Collection deadline must be finite and in the future')
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    guard = output.parent / 'robustness_20261121' / 'closeout_requested'
+    guard = Path(guard_file).expanduser() if guard_file is not None else None
     def cancelled():
-        return time.time() >= CUTOFF or guard.exists() or (output/'STOP').exists()
-    client = Workstation('http://127.0.0.1:8765/', output/'motion', cancelled=cancelled)
+        return (time.time() >= deadline_epoch or (guard is not None and guard.exists())
+                or (output/'STOP').exists())
+    if cancelled():
+        raise RuntimeError('Collection deadline/stop reached')
+    # Preserve job evidence when a new booking restarts workstation job numbering.
+    run_output = output/'motion'/f'run-{time.time_ns()}'
+    client = Workstation('http://127.0.0.1:8765/', run_output, cancelled=cancelled)
     actions = RemoteDrawing(client)
     game = GridGame(actions, width=actions.width-.004, height=actions.height-.004,
                     rows=9, columns=9, win_length=4)
@@ -105,5 +110,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',required=True)
     parser.add_argument('--groups',type=int,default=12,choices=range(1,13))
+    parser.add_argument('--deadline-epoch', type=float, required=True)
+    parser.add_argument('--guard-file', type=Path)
     args = parser.parse_args()
-    collect(args.output,args.groups)
+    collect(args.output, args.groups, deadline_epoch=args.deadline_epoch,
+            guard_file=args.guard_file)
