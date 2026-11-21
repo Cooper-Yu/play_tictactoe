@@ -13,8 +13,11 @@ def require_real_profile(environment, use_sim_time, names):
         raise ValueError('Gazebo discovered in the real robot domain')
     if names.count('motion_planner') != 1 or names.count('move_group') != 1:
         raise ValueError('Real workstation requires one motion_planner and one move_group')
-    if 'piper_ctrl_single_node' not in names or not any('zenoh' in name for name in names):
-        raise ValueError('Real Piper driver / platform bridge not discovered')
+    # A connected platform bridge may not advertise its own ROS node.
+    required = {'piper_ctrl_single_node', 'controller_manager',
+                'arm_controller', 'joint_state_broadcaster'}
+    if not required.issubset(names):
+        raise ValueError('Real Piper driver / controller graph not discovered')
 
 
 class RealRobotDriver(MotionDriver):
