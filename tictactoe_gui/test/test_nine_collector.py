@@ -82,3 +82,20 @@ def test_old_booking_guard_does_not_cancel_new_booking(tmp_path):
     old.touch()
     module.collect(tmp_path, 1, deadline_epoch=1795243979.)
     assert len(list(tmp_path.glob('board-*/COMPLETE'))) == 1
+
+def test_edge_profile_preserves_independent_four_two_two_split(tmp_path):
+    module.collect(tmp_path,8,deadline_epoch=1795243979.,layout_profile='edge')
+    metadata=[json.loads(p.read_text()) for p in tmp_path.glob('board-*/attempt-*/layout-04.json')]
+    assert {s:len([d for d in metadata if d['split']==s]) for s in ('train','val','test')}=={'train':4,'val':2,'test':2}
+    for d in metadata:
+        assert d['layout_profile']=='edge'
+        assert {(m['row'],m['col']) for m in d['marks'][:4]}=={(0,8),(0,0),(8,8),(8,0)}
+        assert all(m['row'] in (0,1,7,8) or m['col'] in (0,1,7,8) for m in d['marks'])
+    for cell in ((0,8),(0,0),(8,8),(8,0)):
+        assert {m['mark'] for d in metadata if d['split']=='train' for m in d['marks'] if (m['row'],m['col'])==cell}=={'X','O'}
+
+
+def test_edge_split_cannot_silently_become_train_only(tmp_path):
+    with pytest.raises(ValueError,match='eight independent groups'):
+        module.collect(tmp_path,4,deadline_epoch=1795243979.,layout_profile='edge')
+    assert not FakeClient.calls

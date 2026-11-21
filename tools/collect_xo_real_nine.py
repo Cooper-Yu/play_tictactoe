@@ -13,9 +13,11 @@ import time
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
 from tictactoe_game.grid_game import GridGame
 
-def collect(output, groups=12, *, deadline_epoch, guard_file=None):
+def collect(output, groups=12, *, deadline_epoch, guard_file=None, layout_profile='mixed'):
     if not math.isfinite(deadline_epoch) or deadline_epoch <= time.time():
         raise ValueError('Collection deadline must be finite and in the future')
+    if layout_profile not in ('mixed', 'edge') or (layout_profile == 'edge' and groups != 8):
+        raise ValueError('Edge profile requires eight independent groups')
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     guard = Path(guard_file).expanduser() if guard_file is not None else None
@@ -30,7 +32,7 @@ def collect(output, groups=12, *, deadline_epoch, guard_file=None):
     actions = RemoteDrawing(client)
     game = GridGame(actions, width=actions.width-.004, height=actions.height-.004,
                     rows=9, columns=9, win_length=4)
-    split_order = ['train']*8+['val']*2+['test']*2
+    split_order = ['train']*(4 if layout_profile == 'edge' else 8)+['val']*2+['test']*2
     for index in range(groups):
         if cancelled():
             raise RuntimeError('Collection deadline/stop reached')
@@ -59,7 +61,7 @@ def collect(output, groups=12, *, deadline_epoch, guard_file=None):
             stem = f'layout-{stage:02d}'
             (attempt/(stem+'.jpg')).write_bytes(image.content)
             metadata = dict(group=f'board-{index:02d}',split=split_order[index],
-                            stage=stage,marks=marks.copy(),camera=camera,
+                            stage=stage,marks=marks.copy(),camera=camera,layout_profile=layout_profile,
                             pose=state.get('pose'),time=time.time(),label_status='pending_visual_review')
             (attempt/(stem+'.json')).write_text(json.dumps(metadata,indent=2))
             print('COLLECTED',index,stage,'objects',len(marks),'sequence',camera['sequence'],flush=True)
@@ -72,10 +74,14 @@ def collect(output, groups=12, *, deadline_epoch, guard_file=None):
             client.park('clear')
             snapshot(0)
             rng = random.Random(2026112100+index)
-            cells = [(r,c) for r in range(9) for c in range(9)]
+            cells = [(r,c) for r in range(9) for c in range(9)
+                     if layout_profile != 'edge' or r in (0,1,7,8) or c in (0,1,7,8)]
             rng.shuffle(cells)
             # Cover every corner over the batch while retaining random independent layouts.
-            cells = [((0,0),(0,8),(8,8),(8,0))[index%4]] + cells
+            if layout_profile == 'edge':
+                cells = [(0,8),(0,0),(8,8),(8,0)] + cells
+            else:
+                cells = [((0,0),(0,8),(8,8),(8,0))[index%4]] + cells
             unique = list(dict.fromkeys(cells))[:8]
             for pair in range(4):
                 strokes = []
@@ -84,6 +90,11 @@ def collect(output, groups=12, *, deadline_epoch, guard_file=None):
                     row,col = unique[pair*2+j]
                     mark = 'X' if (index+pair+j)%2==0 else 'O'
                     factor = [.55,.65,.75,.8][(index+pair+j)%4]
+                    if layout_profile == 'edge':
+                        factors = [.55,.65,.75,.8] if mark == 'X' else [.5,.6,.7,.75]
+                        factor = factors[(index//2+pair+j)%4]
+                        if pair == 0 and j == 0:
+                            factor = (.55,.50,.75,.75)[index%4]
                     center = game.cell_center(row,col)
                     geometry = (actions.x_strokes(center,game.cell_size*factor) if mark=='X'
                                 else actions.o_strokes(center,game.cell_size*factor/2))
@@ -112,6 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('--groups',type=int,default=12,choices=range(1,13))
     parser.add_argument('--deadline-epoch', type=float, required=True)
     parser.add_argument('--guard-file', type=Path)
+    parser.add_argument('--layout-profile',choices=('mixed','edge'),default='mixed')
     args = parser.parse_args()
     collect(args.output, args.groups, deadline_epoch=args.deadline_epoch,
-            guard_file=args.guard_file)
+            guard_file=args.guard_file, layout_profile=args.layout_profile)
