@@ -19,7 +19,11 @@ def main():
     parser.add_argument('--guard-file',type=Path,required=True)
     parser.add_argument('--model',type=Path,required=True)
     parser.add_argument('--points',type=Path,required=True)
+    parser.add_argument('--x-factor',type=float,default=.55)
+    parser.add_argument('--o-factor',type=float,default=.50)
     args=parser.parse_args()
+    if not (.3 <= args.x_factor <= .8 and .3 <= args.o_factor <= .8):
+        raise ValueError('Glyph factors must be within0.3 to0.8 of a cell')
     args.output.mkdir(parents=True,exist_ok=True)
     stop=lambda: time.time()>=args.deadline_epoch or args.guard_file.exists() or (args.output/'STOP').exists()
     client=Workstation('http://127.0.0.1:8765/',args.output/'motion'/str(time.time_ns()),cancelled=stop)
@@ -55,7 +59,7 @@ def main():
             record=dict(time=time.time(),layout=layout,stage=stage,expected=marks.copy(),
                         detected={f'{r+1},{c+1}':sorted(ms) for (r,c),ms in detected.items()},
                         exact=truth==actual,fn=sorted(truth-actual),fp=sorted(actual-truth),camera=camera,
-                        model=str(args.model),annotation_status='Expected executed geometry; verify actual pen marks')
+                        model=str(args.model),x_factor=args.x_factor,o_factor=args.o_factor,annotation_status='Expected executed geometry; verify actual pen marks')
             (folder/f'stage-{stage}.json').write_text(json.dumps(record,indent=2))
             raw,transform=detector._camera_frame(b.content)
             import cv2
@@ -70,8 +74,8 @@ def main():
                 strokes=[];pending=[]
                 for i in range(pair*2,pair*2+2):
                     row,col=cells[i];mark='X' if (i+layout)%2==0 else 'O';center=grid.cell_center(row,col)
-                    geometry=(actions.x_strokes(center,grid.cell_size*.55) if mark=='X'
-                              else actions.o_strokes(center,grid.cell_size*.25))
+                    geometry=(actions.x_strokes(center,grid.cell_size*args.x_factor) if mark=='X'
+                              else actions.o_strokes(center,grid.cell_size*args.o_factor/2))
                     strokes.extend(geometry);pending.append((row,col,mark,geometry))
                 client.command(kind='canvas',strokes=strokes,speed=.45);client.park('clear')
                 for row,col,mark,geometry in pending:
