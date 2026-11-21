@@ -52,7 +52,10 @@ def collect(output, groups=12, *, deadline_epoch, guard_file=None, layout_profil
     if avoid_windows:
         submit = client.command
         def scheduled_command(**command):
+            initial_job = client.get('status')['job']
             wait_for_capture_window(command, avoid_windows, cancelled)
+            if client.get('status')['job'] != initial_job:
+                raise RuntimeError('Another operator changed the job during the capture pause')
             return submit(**command)
         client.command = scheduled_command
     actions = RemoteDrawing(client)

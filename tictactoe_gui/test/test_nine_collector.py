@@ -121,3 +121,17 @@ def test_invalid_capture_windows_cannot_start_motion(tmp_path):
     with pytest.raises(ValueError,match='finite start/end'):
         module.collect(tmp_path,deadline_epoch=1795243979.,avoid_windows=[(1.,float('inf'))])
     assert not FakeClient.calls
+
+def test_pause_cannot_resume_after_another_operator_changes_job(monkeypatch,tmp_path):
+    clock=[100.]
+    monkeypatch.setattr(module.time,'time',lambda:clock[0])
+    monkeypatch.setattr(module.time,'sleep',lambda t:clock.__setitem__(0,clock[0]+t))
+    original=FakeClient.get
+    def status(self,route,**kwargs):
+        result=original(self,route,**kwargs)
+        if route=='status':result['job']=0 if clock[0]<120 else 1
+        return result
+    monkeypatch.setattr(FakeClient,'get',status)
+    with pytest.raises(RuntimeError,match='Another operator'):
+        module.collect(tmp_path,1,deadline_epoch=200.,avoid_windows=[(110.,120.)])
+    assert not FakeClient.calls
