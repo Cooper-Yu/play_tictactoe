@@ -9,11 +9,12 @@ import cv2
 from tictactoe_gui.real_board_perception import RealBoardPerception
 
 
-def compare_cells(expected, detected):
-    truth = {(m['row'],m['col'],m['mark']) for m in expected}
-    actual = {(r,c,mark) for (r,c),marks in detected.items() for mark in marks}
+def compare_cells(expected, detected, ignore_cells=()):
+    ignored = {tuple(c) for c in ignore_cells}
+    truth = {(m['row'],m['col'],m['mark']) for m in expected if (m['row'],m['col']) not in ignored}
+    actual = {(r,c,mark) for (r,c),marks in detected.items() if (r,c) not in ignored for mark in marks}
     return dict(tp=len(truth & actual),fn=sorted(truth-actual),fp=sorted(actual-truth),
-                exact=truth==actual,conflicts=sum(len(x)>1 for x in detected.values()))
+                exact=truth==actual,conflicts=sum(len(x)>1 for c,x in detected.items() if c not in ignored),ignored_cells=sorted(ignored))
 
 
 def evaluate(weights, dataset, split, points, output, device='0'):
@@ -28,7 +29,7 @@ def evaluate(weights, dataset, split, points, output, device='0'):
         raw = Path(entry['image']).read_bytes()
         start=time.monotonic()
         detected = perception.detect_cells(raw,9)
-        result=compare_cells(entry['marks'],detected)
+        result=compare_cells(entry['marks'],detected,entry.get('ignored_cells',()))
         result.update(image=entry['image'],group=entry['group'],elapsed=time.monotonic()-start,
                       detected=[dict(row=r,col=c,marks=sorted(m)) for (r,c),m in detected.items()])
         rows.append(result)
@@ -38,7 +39,9 @@ def evaluate(weights, dataset, split, points, output, device='0'):
     totals=dict(frames=len(rows),physical_groups=len({x['group'] for x in rows}),
                 exact=sum(x['exact'] for x in rows),tp=sum(x['tp'] for x in rows),
                 fn=sum(len(x['fn']) for x in rows),fp=sum(len(x['fp']) for x in rows),
-                conflicts=sum(x['conflicts'] for x in rows))
+                conflicts=sum(x['conflicts'] for x in rows),
+                ignored_cell_observations=sum(len(x['ignored_cells']) for x in rows),
+                exact_scope='reviewed cells only; unreadable cells excluded from all counts')
     totals['recall']=totals['tp']/max(1,totals['tp']+totals['fn'])
     totals['precision']=totals['tp']/max(1,totals['tp']+totals['fp'])
     report=dict(model=str(weights),sha256=hashlib.sha256(Path(weights).read_bytes()).hexdigest(),

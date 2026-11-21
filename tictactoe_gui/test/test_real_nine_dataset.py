@@ -53,3 +53,19 @@ def test_edge_split_requires_all_eight_groups_and_keeps_a_real_test_set(tmp_path
         module.prepare(tmp_path,tmp_path/'missing',tmp_path/'out',None,None,None,expected_counts=(4,2,2))
     with pytest.raises(ValueError,match='positive train'):
         module.prepare(tmp_path,tmp_path/'missing',tmp_path/'out',None,None,None,expected_counts=(8,0,0))
+
+def test_unreadable_crop_is_never_exported_as_background():
+    box=(0,np.array([70.,20.,80.,30.]))
+    assert module.crop_labels([box],(0,0,50,50)) == []
+    assert module.crop_labels([box],(50,0,100,50)) != []
+    assert module.crop_labels([box],(0,0,75,50)) is None
+
+
+def test_cell_evaluation_reports_but_does_not_score_unreadable_cells():
+    path=source.with_name('evaluate_real_nine.py')
+    spec=importlib.util.spec_from_file_location('nine_eval',path)
+    evaluation=importlib.util.module_from_spec(spec);spec.loader.exec_module(evaluation)
+    result=evaluation.compare_cells([dict(row=0,col=8,mark='X'),dict(row=8,col=0,mark='O')],
+                                    {(0,8):{'O'},(8,0):{'O'}},[(0,8)])
+    assert result['tp']==1 and result['fn']==[] and result['fp']==[] and result['exact']
+    assert result['ignored_cells']==[(0,8)]

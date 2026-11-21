@@ -95,6 +95,10 @@ def prepare(raw, review_file, output, points_file, board_file, old_train, *, exp
             image_path = attempt/f'layout-{stage:02d}.jpg'
             check_review(image_path, review)
             meta = json.loads(image_path.with_suffix('.json').read_text())
+            unreadable = review[image_path.name].get('unreadable_marks', [])
+            if (not isinstance(unreadable,list) or any(type(i) is not int or i < 0 or i >= len(meta['marks']) for i in unreadable)
+                    or (unreadable and not review[image_path.name].get('reason'))):
+                raise ValueError('Unreadable mark exclusions require valid indexes and a reason')
             split = meta['split']
             if split not in split_lists or meta['group'] != group['group'] or len(meta['marks']) != 2*stage:
                 raise ValueError('Inconsistent source metadata')
@@ -111,8 +115,12 @@ def prepare(raw, review_file, output, points_file, board_file, old_train, *, exp
             shutil.copyfile(image_path,original)
             annotations.append(dict(group=group['group'],split=split,image=str(original),
                                     source_sha256=digest(image_path),marks=meta['marks'],
+                                    ignored_cells=[[meta['marks'][i]['row'],meta['marks'][i]['col']] for i in unreadable],
                                     boxes=[dict(category=c,xyxy=b.tolist()) for c,b in boxes]))
             for i,region in enumerate(crop_regions(image.shape,transform)):
+                if any(crop_labels([boxes[i]],region) != [] for i in unreadable):
+                    excluded.append(dict(image=name,zone=i,reason='visually unreadable intended mark; do not teach as symbol or background'))
+                    continue
                 labels = crop_labels(boxes,region)
                 if labels is None:
                     excluded.append(dict(image=name,zone=i,reason='partially visible padding neighbor'))
