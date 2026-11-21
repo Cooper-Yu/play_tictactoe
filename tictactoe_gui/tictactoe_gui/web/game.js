@@ -17,6 +17,8 @@ let sending = false;
 let notice = '';
 let frame;
 let activeMode;
+let activeOpponent;
+let activeInputSource;
 let visionAvailable = false;
 let realEnvironment = false;
 const perception = get('perception');
@@ -82,6 +84,7 @@ const phases = {
 };
 const chosenMode = () => document.querySelector('input[name="size"]:checked').value;
 const selected = () => ['9', 'four', 'four-three-stone'].includes(chosenMode()) ? 9 : 3;
+const chosenOpponent = () => ['3', 'four'].includes(chosenMode()) ? get('opponent').value : 'ai';
 
 function winningRun(cells, winner, length) {
   if (winner !== 'X' && winner !== 'O') return [];
@@ -126,10 +129,20 @@ function render() {
     document.querySelector('input[name="size"][value="' + mode + '"]').checked = true;
   }
   activeMode = mode;
+  if (game && game.input_source !== activeInputSource) get('input-source').value = game.input_source;
+  activeInputSource = game ? game.input_source : undefined;
   const isThreeStone = chosenMode() === 'four-three-stone';
-  get('first-option').hidden = isThreeStone;
+  const opponent = game?.opponent ?? 'ai';
+  if (game && opponent !== activeOpponent) get('opponent').value = opponent;
+  activeOpponent = game ? opponent : undefined;
+  const setupTwoPlayers = chosenOpponent() === 'human';
+  const twoPlayers = game ? opponent === 'human' : setupTwoPlayers;
+  get('opponent-option').hidden = !['3', 'four'].includes(chosenMode());
+  get('first-option').hidden = isThreeStone || setupTwoPlayers;
+  get('mark-label').textContent = setupTwoPlayers ? 'First symbol' : 'Your symbol';
   get('input-option').hidden = !visionAvailable || !['3', 'four'].includes(chosenMode());
-  const vision = game?.input_source === 'vision';
+  const vision = ['vision', 'handwriting'].includes(game?.input_source);
+  const handwriting = game?.input_source === 'handwriting';
   get('three-stone-rules').hidden = !isThreeStone;
   const size = game?.size ?? selected();
   const showPoints = game ? game.mode === "score" : chosenMode() === "score";
@@ -166,12 +179,14 @@ function render() {
     cell.disabled = !playable || Boolean(mark);
     cell.setAttribute('aria-label', 'Row ' + (row+1) + ', column ' + (col+1) + ', ' + (mark || 'Empty') + (showPoints ? ', ' + points + ' points' : ''));
   });
+  updateHandwriting(handwriting, playable, game?.revision);
   winLine.hidden = winCells.length === 0;
   winLine.dataset.mark = game?.winner ?? '';
   positionWinLine();
   get('heading').textContent = ({'score': 'Scored Tic-Tac-Toe', 'four': 'Four-in-a-Row', 'four-three-stone': 'Four-in-a-Row · Three-stone opening', '9': 'Gomoku', '3': 'Tic-Tac-Toe'})[mode ?? chosenMode()];
   const human = game?.human ?? get('mark').value;
-  get('roles').textContent = 'You play ' + human + ' · AI plays ' + (human === 'X' ? 'O' : 'X');
+  get('roles').textContent = twoPlayers ? 'Player X · Player O'
+    : 'You play ' + human + ' · AI plays ' + (human === 'X' ? 'O' : 'X');
   get('connection').textContent = ready ? (realEnvironment ? 'Robot connected' : 'Gazebo connected')
     : (online ? (realEnvironment ? 'Waiting for robot feedback or camera' : 'Simulation is not ready') : 'Disconnected');
   if (realEnvironment) {
@@ -212,7 +227,8 @@ function render() {
       outcome = 'Round 1 score · You ' + playerScore.points + ' points, AI ' + aiScore.points + ' points';
     }
   } else {
-    outcome = game?.winner === 'draw' ? 'Draw' : game?.winner && (game.winner === game.human ? 'You win' : 'AI wins');
+    outcome = game?.winner === 'draw' ? 'Draw' : game?.winner && (twoPlayers
+      ? 'Player ' + game.winner + ' wins' : (game.winner === game.human ? 'You win' : 'AI wins'));
   }
 
   const result = get('result');
@@ -223,13 +239,17 @@ function render() {
   if (busy && game && ['drawing_x','thinking','drawing_o'].includes(game.phase)) {
     const mark = game.phase === 'drawing_x' ? 'X' : 'O';
     const action = game.phase === 'thinking' ? 'AI is choosing a cell' :
-      'The arm is drawing ' + (human === mark ? 'your ' : 'AI mark ') + mark;
+      'The arm is drawing ' + (twoPlayers ? 'player ' : human === mark ? 'your ' : 'AI mark ') + mark;
     message = action + ' · ' + message;
   } else if (!busy && game) {
     if (game.phase === 'between_rounds') message = 'The first player changes next round, You still play ' + human;
-    else if (game.phase === 'player') message = vision
-      ? 'Select an empty cell for proxy drawing ' + human + ', Submit automatically after stable camera recognition'
-      : 'Your turn, Select an empty cell to draw ' + human;
+    else if (game.phase === 'player') {
+      const expectedMark = twoPlayers ? game.turn : human;
+      const turn = twoPlayers ? "Player " + expectedMark + "'s turn. " : '';
+      message = turn + (vision
+        ? (handwriting ? 'Handwrite one ' + expectedMark + ' and press Draw and confirm' : 'Select an empty cell for proxy drawing ' + expectedMark) + ', Submit automatically after stable camera recognition'
+        : 'Select an empty cell to draw ' + expectedMark);
+    }
     else message = outcome ? 'Game finished. Start a new game' : phases[game.phase] || message;
   }
   get('status').textContent = notice || message;
@@ -272,6 +292,7 @@ async function refresh() {
       perceptionView.value = 'detections';
       get('input-source').value = 'vision';
       get('input-source').querySelector('[value=click]').disabled = true;
+      get('input-source').querySelector('[value=handwriting]').disabled = true;
       get('input-source').querySelector('[value=vision]').textContent = 'Robot proxy drawing · Camera confirmation';
       document.querySelectorAll('input[name=size]').forEach(input => {
         if (!['3', 'four'].includes(input.value)) input.closest('label').hidden = true;
@@ -349,16 +370,77 @@ setInterval(updatePerception, 850);
 start.addEventListener('click', () => {
   if (!state?.game || window.confirm('Clear the current board and start a new game？')) {
     act('/api/game/start', {size: selected(), mode: ['score', 'four', 'four-three-stone'].includes(chosenMode()) ? chosenMode() : 'classic',
-      first: get('first').value, mark: get('mark').value,
+      first: chosenOpponent() === 'human' ? 'player' : get('first').value, mark: get('mark').value,
+      opponent: chosenOpponent(),
       input_source: visionAvailable && ['3', 'four'].includes(chosenMode()) ? get('input-source').value : 'click'});
   }
 });
+get('opponent').addEventListener('change', render);
 get('next').addEventListener('click', () => act('/api/game/next', {revision: state.game.revision}));
 stop.addEventListener('click', () => act('/api/stop', {}));
 reset.addEventListener('click', () => act('/api/reset', {}));
 document.querySelectorAll('input[name="size"]').forEach(input => input.addEventListener('change', render));
 get('mark').addEventListener('change', render);
 new ResizeObserver(positionWinLine).observe(board);
+const ink = get('handwriting');
+const inkContext = ink.getContext('2d');
+let draft = [], activeStroke = null, inkEnabled = false, draftRevision;
+function paintDraft() {
+  const box = ink.getBoundingClientRect();
+  if (!box.width || !box.height) return;
+  ink.width = Math.round(box.width * devicePixelRatio);
+  ink.height = Math.round(box.height * devicePixelRatio);
+  inkContext.scale(devicePixelRatio, devicePixelRatio);
+  inkContext.strokeStyle = '#ffffff';
+  inkContext.lineWidth = 2.5;
+  inkContext.lineCap = inkContext.lineJoin = 'round';
+  for (const stroke of draft) {
+    inkContext.beginPath();
+    stroke.forEach(([x,y], index) => inkContext[index ? 'lineTo' : 'moveTo'](x*box.width, y*box.height));
+    inkContext.stroke();
+  }
+  get('stroke-count').textContent = draft.length + ' strokes';
+}
+function updateHandwriting(show, playable, revision) {
+  ink.hidden = get('handwriting-controls').hidden = !show;
+  inkEnabled = show && playable && (draftRevision === undefined || draftRevision === revision);
+  ink.style.pointerEvents = show ? 'auto' : 'none';
+  get('submit-handwriting').disabled = !inkEnabled || !draft.length || activeStroke !== null;
+  get('undo-stroke').disabled = get('clear-draft').disabled = sending || state?.busy || !draft.length;
+  paintDraft();
+}
+function inkPoint(event) {
+  const box = ink.getBoundingClientRect();
+  return [Math.max(0,Math.min(1,(event.clientX-box.left)/box.width)),
+          Math.max(0,Math.min(1,(event.clientY-box.top)/box.height))];
+}
+ink.addEventListener('pointerdown', event => {
+  if (!inkEnabled || activeStroke || event.button !== 0 || draft.length >= 32) return;
+  event.preventDefault(); ink.setPointerCapture(event.pointerId);
+  draftRevision ??= state.game.revision;
+  activeStroke = [inkPoint(event)]; draft.push(activeStroke); paintDraft();
+  get('submit-handwriting').disabled = true;
+});
+ink.addEventListener('pointermove', event => {
+  if (!activeStroke || activeStroke.length >= 2000) return;
+  activeStroke.push(inkPoint(event)); paintDraft();
+});
+function finishInk() {
+  if (!activeStroke) return;
+  if (activeStroke.length < 2) draft.pop();
+  activeStroke = null; render();
+}
+ink.addEventListener('pointerup', finishInk);
+ink.addEventListener('pointercancel', () => { if (activeStroke) draft.pop(); activeStroke = null; render(); });
+get('undo-stroke').addEventListener('click', () => { draft.pop(); if (!draft.length) draftRevision = undefined; render(); });
+get('clear-draft').addEventListener('click', () => { draft = []; draftRevision = undefined; render(); });
+get('submit-handwriting').addEventListener('click', async () => {
+  if (!inkEnabled || activeStroke || !draft.length) return;
+  const submitted = draft;
+  await act('/api/game/handwriting', {strokes: submitted, revision: draftRevision});
+  if (!notice) { draft = []; draftRevision = undefined; render(); }
+});
+new ResizeObserver(paintDraft).observe(ink);
 const preset = location.hash.slice(1);
 if (['four', 'four-three-stone'].includes(preset)) {
   document.querySelector('input[value="' + preset + '"]').checked = true;

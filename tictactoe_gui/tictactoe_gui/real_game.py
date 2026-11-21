@@ -83,7 +83,8 @@ def real_game_worker(session, *, url, perception, restore=None):
         if current is None or current['phase'] != 'player':
             return None
         if gate_revision != current['revision']:
-            gate = StablePlayerMove(current['board'], current['human'])
+            expected_mark = current['turn'] if current.get('opponent') == 'human' else current['human']
+            gate = StablePlayerMove(current['board'], expected_mark)
             gate_revision = current['revision']
         image, sequence, _ = session.preview_frame()
         if not image or not state.get('camera_fresh') or sequence == gate.last_sequence:
@@ -165,10 +166,12 @@ def real_game_worker(session, *, url, perception, restore=None):
                     client.park('clear')
                     game.start(request.get('size', 3), job['job'], mode=request.get('mode', 'classic'),
                                first=request.get('first', 'player'),
-                               mark=request.get('mark', 'X'), input_source='vision')
+                               mark=request.get('mark', 'X'), input_source='vision',
+                               opponent=request.get('opponent', 'ai'))
                     gate_revision = None
+                    session.update(vision=None)
                 elif kind == 'game_vision_move':
-                    mark = game.player_mark
+                    mark = game.active_mark
                     center = game.game.cell_center(request['row'], request['col'])
                     session.update(message='Drawing the player mark, then waiting for camera confirmation.')
                     timing.emit('player_draw_begin', job=job['job'])
@@ -176,6 +179,8 @@ def real_game_worker(session, *, url, perception, restore=None):
                         actions.draw_x(center, game.game.cell_size*.55)
                     else:
                         actions.draw_o(center, game.game.cell_size*.25)
+                    if game.opponent == 'human':
+                        client.park('zero')
                     timing.emit('player_draw_complete', job=job['job'])
                     deadline = time.monotonic()+45
                     found = None

@@ -205,3 +205,63 @@ def test_real_camera_order_preserves_top_left():
     center = game.game.cell_center(0, 0)
     assert center[0] < .5
     assert center[1] < .5
+
+
+@pytest.mark.parametrize("size,mode", [(3, "classic"), (9, "four")])
+@pytest.mark.parametrize("first_symbol", ["X", "O"])
+def test_two_players_confirm_both_symbols_without_engine(monkeypatch, size, mode, first_symbol):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Two-player games must never call a decision engine")
+    monkeypatch.setattr("tictactoe_game.grid_game.GridGame.suggest_move", forbidden)
+    actions, states = Actions(), []
+    game = GameCoordinator(actions, lambda **data: states.append(data), lambda: False)
+    game.start(size, 1, mode=mode, mark=first_symbol, input_source="vision", opponent="human")
+    assert not actions.calls and game.active_mark == first_symbol
+    other = "O" if first_symbol == "X" else "X"
+    for revision, (row, col, symbol) in enumerate(((0,size-1,first_symbol), (1,size-1,other)), 2):
+        with pytest.raises(ValueError, match="current player symbol"):
+            game.register_observed_move(row, col, "O" if symbol == "X" else "X", revision)
+        assert states[-1]["game"]["board"][row][col] == ""
+        game.register_observed_move(row, col, symbol, revision)
+        assert states[-1]["game"]["board"][row][col] == symbol
+        assert states[-1]["game"]["opponent"] == "human"
+        assert states[-1]["game"]["phase"] == "player"
+    assert game.active_mark == first_symbol and not actions.calls
+    with pytest.raises(ValueError, match="occupied"):
+        game.register_observed_move(0, size-1, first_symbol, 4)
+
+
+def test_two_player_click_game_draws_once_and_stops_at_winner(monkeypatch):
+    monkeypatch.setattr("tictactoe_game.grid_game.GridGame.suggest_move",
+                        lambda *a, **k: pytest.fail("Unexpected engine call"))
+    actions, states = Actions(), []
+    game = GameCoordinator(actions, lambda **data: states.append(data), lambda: False)
+    game.start(3, 1, opponent="human", mark="O")
+    for revision, cell in enumerate(((0,0), (1,0), (0,1), (1,1), (0,2)), 2):
+        game.move(*cell, revision)
+    assert [m for m,_ in actions.calls] == ["O", "X", "O", "X", "O"]
+    assert states[-1]["game"]["winner"] == "O"
+    assert states[-1]["game"]["phase"] == "finished"
+    with pytest.raises(ValueError, match="Cannot place"):
+        game.move(2, 2, 7)
+
+
+@pytest.mark.parametrize("options", [dict(opponent="robot"), dict(opponent="human",mode="score"),
+                                    dict(opponent="human",first="ai")])
+def test_invalid_two_player_setup_rejected_before_grid(options):
+    game = GameCoordinator(Actions(), lambda **data: pytest.fail("Published before validation"), lambda: False)
+    with pytest.raises(ValueError):
+        game.start(3, 1, **options)
+
+
+def test_two_player_failed_o_retains_first_mark_and_blocks():
+    actions, states = Actions(fail_o=True), []
+    game = GameCoordinator(actions, lambda **data: states.append(data), lambda: False)
+    game.start(3, 1, opponent="human")
+    game.move(0, 0, 2)
+    with pytest.raises(RuntimeError, match="Drawing not verified"):
+        game.move(0, 1, 3)
+    s = states[-1]["game"]
+    assert s["phase"] == "blocked" and s["turn"] == "O"
+    assert s["board"][0] == ["X", "", ""]
+    assert [m for m,_ in actions.calls] == ["X", "O"]

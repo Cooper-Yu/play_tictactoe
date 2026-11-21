@@ -25,6 +25,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
     from tictactoe_motion.actions.drawing_actions import DrawingActions
     from tictactoe_coordinator.game_coordinator import GameCoordinator, THREE_STONE_MODE
     from tictactoe_perception.stable_player_move import StablePlayerMove
+    from tictactoe_gui.geometry import verify_handwriting_cell, verify_handwriting_shape
     from tictactoe_motion.simulation.simulated_board import SimulatedBoard
     from tictactoe_driver.simulation_driver import SimulationDriver
     from tictactoe_motion.simulation.simulation_scene import verify_scene
@@ -144,7 +145,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
         game = GameCoordinator(actions, session.update, session.stop.is_set)
 
         def read_player_mark(baseline):
-            gate = StablePlayerMove(baseline, game.player_mark)
+            gate = StablePlayerMove(baseline, game.active_mark)
             accepted_frames = []
             for _ in range(12):
                 if session.stop.is_set():
@@ -158,13 +159,15 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                 ok, encoded = cv2.imencode(".png", raw)
                 if not ok:
                     raise RuntimeError("Camera image encoding failed")
-                cells = perception.detect_cells(encoded.tobytes())
+                cells = perception.detect_cells(encoded.tobytes(), size=game.game.rows)
                 sequence = frame["sequence"]
                 accepted_frames.append(dict(
                     sequence=sequence,
                     cells={f"{r+1},{c+1}": sorted(marks) for (r, c), marks in cells.items()},
                 ))
                 found = gate.observe(sequence, cells)
+                session.update(vision=dict(sequence=sequence, consecutive=gate.count,
+                                           confirmed=found))
                 if found is not None:
                     return found, accepted_frames
             raise RuntimeError("Camera did not confirm one unique new mark, Inspect the board before starting a new game")
@@ -220,28 +223,39 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                 if needs_motion and not reuse_hover:
                     driver.named('clear')
                 if kind == 'game_start':
+                    session.update(vision=None)
                     request = job['game_request']
                     game.start(request['size'], job['job'], mode=request.get('mode', 'classic'),
                                first=request.get('first', 'player'), mark=request.get('mark', 'X'),
-                               input_source=request.get('input_source', 'click'))
+                               input_source=request.get('input_source', 'click'),
+                               opponent=request.get('opponent', 'ai'))
                 elif kind == 'game_next':
                     game.next_round(job['job'])
                 elif kind == 'game_move':
                     move = job['game_request']
                     game.move(move['row'], move['col'], job['job'])
-                elif kind == 'game_vision_move':
+                elif kind in ('game_vision_move', 'game_handwriting'):
                     baseline = session.status()['game']['board']
-                    center = game.game.cell_center(request['row'], request['col'])
-                    mark = game.player_mark
-                    session.update(message=f'Drawing the proxy player mark {mark}')
-                    if mark == 'X':
-                        actions.draw_x(center, game.game.cell_size*.55, cancelled=session.stop.is_set)
+                    mark = game.active_mark
+                    session.update(message=f'Drawing the player handwriting for {mark}')
+                    if kind == 'game_handwriting':
+                        for part, drawing in segments:
+                            drawing.run(GameMotion(.032) if fast_game else driver,
+                                        cancelled=session.stop.is_set)
+                            session.update(completed=part['stroke'])
                     else:
-                        actions.draw_o(center, game.game.cell_size*.25, cancelled=session.stop.is_set)
+                        center = game.game.cell_center(request['row'], request['col'])
+                        if mark == 'X':
+                            actions.draw_x(center, game.game.cell_size*.55, cancelled=session.stop.is_set)
+                        else:
+                            actions.draw_o(center, game.game.cell_size*.25, cancelled=session.stop.is_set)
                     driver.named('zero')
                     session.update(message='Waiting for camera confirmation of the new mark')
                     found, frames = read_player_mark(baseline)
                     evidence.update(observed_move=found, observations=frames)
+                    if kind == 'game_handwriting':
+                        verify_handwriting_cell(job['strokes'], found, game.game.rows)
+                        verify_handwriting_shape(job['strokes'], game.game.width, game.game.height)
                     if session.stop.is_set():
                         raise RuntimeError('Task stopped')
                     # The only player move submitted to the coordinator is the camera result.
@@ -297,11 +311,12 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                 messages = {'draw': 'Drawing completed, Returned to zero', 'reset': 'Tablet cleared, Returned to zero',
                             'game_start': 'Board ready, Place a mark', 'game_move': 'Drawing round completed',
                             'game_next': 'Round two started, Your turn',
+                            'game_handwriting': 'Camera confirmed the handwritten move, Round completed',
                             'game_vision_move': 'Camera confirmed the player move, Round completed'}
                 session.update(state='done', message=messages[kind])
             except BaseException as error:
                 parked_over_board = False
-                if job['kind'] in ('game_move', 'game_vision_move', 'game_next', 'reset') and game.game is not None:
+                if job['kind'] in ('game_move', 'game_vision_move', 'game_handwriting', 'game_next', 'reset') and game.game is not None:
                     game.block(job['job'])
                 evidence.update(passed=False, error=repr(error))
                 if driver.execution.is_executing:
@@ -314,7 +329,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
                 state = 'blocked' if blocked else 'stopped' if session.stop.is_set() else 'failed'
                 message='Stopped, Remaining strokes were not executed' if state=='stopped' else 'Execution verification failed, Task stopped; Check the runtime log'
                 print('CANVAS_JOB_FAILED',repr(error),flush=True)
-                session.update(state=state, message=message)
+                session.update(state=state, message=message + ': ' + str(error))
             finally:
                 session.update(busy=False)
                 evidence.update(elapsed_s=time.monotonic()-started, executions=driver.results,

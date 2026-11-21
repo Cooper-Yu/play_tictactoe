@@ -117,3 +117,83 @@ def test_blocked_session_can_explicitly_clear_but_not_resume(tmp_path):
     assert session.submit('reset') == 1
     with pytest.raises(RuntimeError):
         session.submit('reset')
+
+
+@pytest.mark.parametrize("size,mode", [(3,"classic"), (9,"four")])
+@pytest.mark.parametrize("first_symbol", ["X","O"])
+def test_two_players_real_worker_confirms_each_turn_without_ai(monkeypatch, tmp_path, size, mode, first_symbol):
+    world = SimpleNamespace(cells={}, sequence=0, drawn=[], parks=[], target=(0,size-1))
+    class Response:
+        content = b"camera"
+        def raise_for_status(self): pass
+        def json(self):
+            world.sequence += 1
+            return {"camera":{"sequence":world.sequence,"fresh":True,"age_s":0},"fresh":True}
+    class HTTP:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def get(self,*args,**kwargs): return Response()
+    class Client:
+        def __init__(self,*args,**kwargs): self.url="http://test/"
+        def command(self,**kwargs): assert kwargs["kind"]=="reset"
+        def park(self,name): world.parks.append(name)
+    class Actions:
+        width,height=.144,.193
+        def __init__(self,client): pass
+        def grid_strokes(self,*args): pass
+        x_strokes=o_strokes=grid_strokes
+        def draw_grid(self,*args,**kwargs): return {"passed":True}
+        def draw_x(self,*args,**kwargs): return self.draw("X")
+        def draw_o(self,*args,**kwargs): return self.draw("O")
+        def draw(self,mark):
+            # The state must still be empty while the actual stroke is drawn.
+            assert session.status()["game"]["board"][world.target[0]][world.target[1]]==""
+            world.drawn.append(mark);world.cells[world.target]=frozenset((mark,))
+            return {"passed":True}
+    class Perception:
+        def detect_cells(self,image,size=3): return dict(world.cells)
+    monkeypatch.setattr(real_game.requests,"Session",HTTP)
+    monkeypatch.setattr(real_game,"Workstation",Client)
+    monkeypatch.setattr(real_game,"RemoteDrawing",Actions)
+    monkeypatch.setattr("tictactoe_game.grid_game.GridGame.suggest_move",
+                        lambda *a,**k:pytest.fail("Two-player game called AI"))
+    session=CanvasSession(tmp_path,None,environment="real",vision_available=True)
+    thread=threading.Thread(target=real_game.real_game_worker,args=(session,),
+                            kwargs={"url":"http://test/","perception":Perception()},daemon=True)
+    def wait(predicate):
+        deadline=time.monotonic()+5
+        while not predicate():
+            assert time.monotonic()<deadline,session.status()
+            time.sleep(.01)
+    thread.start()
+    try:
+        wait(lambda:session.status()["state"]=="ready")
+        session.submit("game_start",game_request={"size":size,"mode":mode,"input_source":"vision",
+                                                 "opponent":"human","mark":first_symbol})
+        wait(lambda:not session.status()["busy"])
+        for row,mark in ((0,first_symbol),(1,"O" if first_symbol=="X" else "X")):
+            world.target=(row,size-1)
+            before=len(world.drawn)
+            session.submit("game_vision_move",game_request={"row":row,"col":size-1,
+                            "revision":session.status()["game"]["revision"]})
+            wait(lambda:not session.status()["busy"])
+            s=session.status()
+            assert s["state"]=="ready",s
+            assert s["game"]["board"][row][size-1]==mark
+            assert s["vision"]["consecutive"]==3
+            assert len(world.drawn)==before+1
+            assert world.parks[-1]=="zero"
+        assert session.status()["game"]["turn"]==first_symbol
+        assert session.status()["game"]["phase"]=="player"
+    finally:
+        session.shutdown.set();thread.join(timeout=3)
+
+
+@pytest.mark.parametrize("options", [{"opponent":"unknown"}, {"opponent":"human","mode":"score"},
+                                    {"opponent":"human","first":"ai"}])
+def test_two_player_bad_setup_cannot_queue_reset(tmp_path, options):
+    session=CanvasSession(tmp_path,None,vision_available=True,environment="real")
+    session.update(state="ready")
+    with pytest.raises(ValueError):
+        session.submit("game_start",game_request={"size":3,"input_source":"vision",**options})
+    assert session.jobs.empty() and session.status()["job"]==0

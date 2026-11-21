@@ -30,12 +30,18 @@ class GameCoordinator:
         self.game = None
         self.mode = "classic"
         self.input_source = "click"
+        self.opponent = "ai"
         self.human = "X"
         self.player_mark = "X"
         self.round_number = 1
         self.rounds = []
         self.match_winner = None
         self.decided_by = None
+
+    @property
+    def active_mark(self):
+        """Return the visible symbol expected from the current manual player."""
+        return self._mark(self.game.turn) if self.opponent == "human" and self.game else self.player_mark
 
     def _mark(self, canonical):
         if canonical not in ("X", "O"):
@@ -50,7 +56,7 @@ class GameCoordinator:
         shown = [self._mark(cell) for cell in game.board]
         first_mark = "O" if self.mode == THREE_STONE_MODE else "X"
         state = dict(size=size, win_length=game.win_length, mode=self.mode, phase=phase, revision=revision,
-                     turn=self._mark(game.turn), input_source=self.input_source,
+                     turn=self._mark(game.turn), input_source=self.input_source, opponent=self.opponent,
                      human=self.player_mark, winner=self._mark(game.outcome),
                      first="player" if self.human == first_mark else "ai",
                      board=[shown[i:i+size] for i in range(0, len(shown), size)])
@@ -70,9 +76,14 @@ class GameCoordinator:
         return {side: {key: sum(round_score[side][key] for round_score in self.rounds)
                        for key in ("points", "lines")} for side in ("player", "ai")}
 
-    def start(self, size, revision, *, mode="classic", first="player", mark="X", input_source="click"):
+    def start(self, size, revision, *, mode="classic", first="player", mark="X",
+              input_source="click", opponent="ai"):
         if not isinstance(mode, str) or (mode, size) not in WIN_LENGTHS:
             raise ValueError("Invalid game mode or board size")
+        if opponent not in ("ai", "human"):
+            raise ValueError("Unknown opponent mode")
+        if opponent == "human" and ((mode, size) not in VISION_MODES or first != "player"):
+            raise ValueError("Two players support 3x3 Tic-Tac-Toe or 9x9 four-in-a-row; choose the first symbol")
         if mode == "classic" and size == 9:
             engine = os.getenv("TICTACTOE_RAPFI")
             if not engine or not Path(engine).expanduser().is_file() or not os.access(
@@ -81,13 +92,15 @@ class GameCoordinator:
                 raise RuntimeError("Configure an executable first TICTACTOE_RAPFI")
         if first not in ("player", "ai") or mark not in ("X", "O"):
             raise ValueError("Invalid turn order or symbol")
-        if input_source not in ("click", "vision") or (
-            input_source == "vision" and (mode, size) not in VISION_MODES
+        if input_source not in ("click", "vision", "handwriting") or (
+            input_source in ("vision", "handwriting") and (mode, size) not in VISION_MODES
         ):
             raise ValueError("Visual moves support classic 3×3 Tic-Tac-Toe or 9×9 four-in-a-row")
         self.input_source = input_source
+        self.opponent = opponent
         self.mode = mode
-        self.human = mark if mode == THREE_STONE_MODE else ("X" if first == "player" else "O")
+        self.human = "X" if opponent == "human" else (
+            mark if mode == THREE_STONE_MODE else ("X" if first == "player" else "O"))
         self.player_mark = mark
         self.round_number = 1
         self.rounds = []
@@ -113,7 +126,7 @@ class GameCoordinator:
                     self._check_cancelled()
                     self.game.play(mark, row, col, **self._options())
                     self._update("preparing", revision)
-            if self.game.turn != self.human:
+            if self.opponent == "ai" and self.game.turn != self.human:
                 self._ai_turn(revision)
         except Exception:
             self.block(revision)
@@ -179,13 +192,14 @@ class GameCoordinator:
         '''Register an already-drawn player mark in a supported visual game.'''
         if self.game is None or (self.mode, self.game.rows) not in VISION_MODES:
             raise ValueError("Unsupported board for visual move registration")
-        if mark != self.player_mark:
-            raise ValueError("Detected symbol does not match the player symbol")
+        if mark != self.active_mark:
+            raise ValueError("Detected symbol does not match the current player symbol")
         self._player_move(row, col, revision, observed=True)
 
     def _player_move(self, row, col, revision, *, observed):
         game = self.game
-        if game is None or game.phase != "playing" or game.turn != self.human:
+        if game is None or game.phase != "playing" or (
+                self.opponent == "ai" and game.turn != self.human):
             raise ValueError("Cannot place a mark now")
         game.cell_center(row, col)
         if game.board[row*game.columns+col]:
@@ -193,11 +207,11 @@ class GameCoordinator:
         try:
             self._check_cancelled()
             if observed:
-                game.record_observed_move(self.human, row, col)
+                game.record_observed_move(game.turn, row, col)
             else:
-                self._update("drawing_" + self.player_mark.lower(), revision)
-                game.play(self.human, row, col, **self._options())
-            if not game.outcome:
+                self._update("drawing_" + self.active_mark.lower(), revision)
+                game.play(game.turn, row, col, **self._options())
+            if not game.outcome and self.opponent == "ai":
                 self._ai_turn(revision)
         except Exception:
             self.block(revision)

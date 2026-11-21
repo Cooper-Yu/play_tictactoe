@@ -12,7 +12,14 @@
   <main>
     <section class="play" aria-label="Game board">
       <div class="board-heading"><h2 id="heading">Tic-Tac-Toe</h2><span id="roles">You play X · AI plays O</span></div>
-      <div class="tablet"><div class="board-wrap"><div id="board" class="board" aria-label="Board"></div><span id="win-line" class="win-line" aria-hidden="true" hidden></span></div></div>
+      <div class="tablet"><div class="board-wrap"><div id="board" class="board" aria-label="Board"></div><canvas id="handwriting" aria-label="Handwrite a mark on the board" hidden></canvas><span id="win-line" class="win-line" aria-hidden="true" hidden></span></div></div>
+      <div id="handwriting-controls" hidden>
+        <p>Write one X or O anywhere within one cell. The camera determines the move.</p>
+        <button id="undo-stroke" type="button">Undo stroke</button>
+        <button id="clear-draft" type="button">Clear draft</button>
+        <button id="submit-handwriting" type="button">Draw and confirm</button>
+        <span id="stroke-count"></span>
+      </div>
       <p id="result" class="result" hidden></p>
       <p id="status" role="status" aria-live="polite">Connecting to local simulation…</p>
     </section>
@@ -45,15 +52,19 @@
           <label><input type="radio" name="size" value="9"><span>Gomoku <small>9 × 9 · Rapfi</small></span></label>
         </fieldset>
         <div class="game-options">
+          <label id="opponent-option" for="opponent">Players
+            <select id="opponent"><option value="ai">Player vs AI</option><option value="human">Two players</option></select>
+          </label>
           <label id="first-option" for="first">First player
             <select id="first"><option value="player">Player</option><option value="ai">AI</option></select>
           </label>
-          <label for="mark">Your symbol
+          <label for="mark"><span id="mark-label">Your symbol</span>
             <select id="mark"><option value="X">X</option><option value="O">O</option></select>
           </label>
           <label id="input-option" for="input-source" hidden>Player input
             <select id="input-source">
               <option value="click">Click a cell</option>
+              <option value="handwriting">Freehand writing · Camera confirmation (simulation)</option>
               <option value="vision">Proxy drawing · Camera recognition</option>
             </select>
           </label>

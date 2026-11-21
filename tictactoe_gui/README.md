@@ -318,3 +318,51 @@ replaying motion requests. A frozen or disconnected page cannot render live
 updates; the cloud worker continues the accepted job. On returning, wait for
 synchronization before issuing another command. Real feedback-loss and stop
 checks remain active independently of page polling.
+
+
+## Two-player camera-confirmed games
+
+The game page offers **Players → Two players** for 3×3 Tic-Tac-Toe and
+9×9 Four-in-a-Row. **First symbol** selects X or O; each accepted turn then
+alternates symbols. Player-vs-AI remains the default. The scoreboard and turn
+messages identify Player X / Player O in two-player games.
+
+On real hardware both players use **Robot proxy drawing · Camera confirmation**:
+click an empty cell, draw only the current player's mark, return to zero, then
+wait for three consistent fresh camera frames before committing a cell and
+changing turns. The clicked coordinates are drawing intent, not board-state
+truth. No decision engine or automatic opponent reply is called. Physical
+camera observations can also be accepted while waiting for the current player.
+An unconfirmed, conflicting or failed stroke does not grant the next turn;
+inspect the retained board and explicitly reset after a blocked operation.
+Existing winner detection, occupied-cell checks, revision checks, stop and
+serialized motion guards remain active. Unsupported score/opening/Gomoku
+variants keep their existing AI modes.
+
+The simulation worker supports the same opponent setting for local validation.
+Frontend and mocked real-worker tests do not replace live camera/robot checks.
+Next real session: alternate X/O across the top and right edges and corners;
+repeat with the first symbol swapped, retaining snapshots and failed detections.
+
+
+### Freehand game input (simulation)
+
+Choose **Player input → Freehand writing · Camera confirmation (simulation)**
+before starting a supported 3×3 or 9×9 game. Both Player vs AI and Two players
+are supported. Draw one symbol directly on the game board, use Undo stroke or
+Clear draft if needed, then press Draw and confirm. Multiple strokes preserve
+their order. Pointer locations are normalized against the playable grid.
+
+The request includes strokes and the game revision, never a proposed cell.
+The simulation arm executes the actual strokes and returns to zero. Three fresh,
+consistent camera observations must identify exactly one new expected symbol
+while preserving every existing symbol. Only the observed cell is committed;
+then the other player or AI acts. Cross-cell ink also blocks registration even
+when only one fragment is detected. Wrong, missing, ambiguous, or duplicate
+occupied-cell marks pause the game without changing its board state.
+
+Ink already executed cannot be undone by editing the browser draft. Inspect the
+physical/simulated board and explicitly clear/start a new game after failure.
+This first implementation is simulation-only; the real server rejects freehand
+requests until the hardware integration is separately validated. Direct human
+writing on a physical tablet remains a separate future input integration.

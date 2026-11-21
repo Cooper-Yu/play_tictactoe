@@ -14,7 +14,7 @@ import threading
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from tictactoe_gui.geometry import prepare_strokes, load_illustration
+from tictactoe_gui.geometry import prepare_strokes, prepare_game_strokes, load_illustration
 
 
 class CanvasSession:
@@ -60,6 +60,14 @@ class CanvasSession:
             return self.latest_camera, self.state.get("camera_sequence", 0), game["size"] if game else 0
 
     def submit(self, kind, strokes=None, game_request=None):
+        if kind == 'game_start':
+            opponent = game_request.get('opponent', 'ai')
+            if opponent not in ('ai', 'human'):
+                raise ValueError('Unknown opponent mode')
+            if opponent == 'human' and (
+                    (game_request.get('mode', 'classic'), game_request['size']) not in VISION_MODES
+                    or game_request.get('first', 'player') != 'player'):
+                raise ValueError('Two players require a supported board and first-symbol selection')
         if self.environment == 'real':
             if kind not in ('game_start', 'game_vision_move', 'reset'):
                 raise ValueError('Real games require visually confirmed moves')
@@ -67,7 +75,8 @@ class CanvasSession:
                     (game_request.get('mode', 'classic'), game_request['size']) not in VISION_MODES
                     or game_request.get('input_source') != 'vision'):
                 raise ValueError('Real games require a supported board and camera recognition mode')
-        prepared = prepare_strokes(strokes) if kind == 'draw' else []
+        prepared = (prepare_strokes(strokes) if kind == 'draw' else
+                    prepare_game_strokes(strokes) if kind == 'game_handwriting' else [])
         with self.lock:
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline') or (
                     self.state['state'] == 'blocked' and kind != 'reset'):
@@ -79,11 +88,16 @@ class CanvasSession:
                 if (current is None or current["revision"] != game_request["revision"]
                         or current["phase"] != "between_rounds"):
                     raise RuntimeError("Cannot start round two now")
-            if kind == "game_start" and game_request.get("input_source", "click") == "vision":
+            if kind == "game_start" and game_request.get("input_source", "click") in ("vision", "handwriting"):
                 if not self.vision_available:
                     raise RuntimeError("Configure first YOLO Weights")
                 if (game_request.get("mode", "classic"), game_request["size"]) not in VISION_MODES:
                     raise ValueError("Visual moves support classic 3×3 Tic-Tac-Toe or 9×9 four-in-a-row")
+            if kind == 'game_handwriting':
+                if (current is None or current['revision'] != game_request['revision']
+                        or current['phase'] != 'player'
+                        or current.get('input_source') != 'handwriting'):
+                    raise RuntimeError('Handwriting does not match the active turn')
             if kind in ("game_move", "game_vision_move"):
                 row, col, revision = (game_request[k] for k in ("row", "col", "revision"))
                 if (current is None or current["revision"] != revision
@@ -208,16 +222,17 @@ def make_handler(session, preview=None):
                     return self.send(202, {'accepted': True})
                 game_routes = {'/api/game/start': 'game_start', '/api/game/move': 'game_move',
                                '/api/game/next': 'game_next',
-                               '/api/game/simulate-player': 'game_vision_move'}
+                               '/api/game/simulate-player': 'game_vision_move',
+                               '/api/game/handwriting': 'game_handwriting'}
                 if self.path in game_routes:
                     kind = game_routes[self.path]
                     fields = {'game_start': ('size',), 'game_move': ('row', 'col', 'revision'),
                               'game_vision_move': ('row', 'col', 'revision'),
-                              'game_next': ('revision',)}[kind]
+                              'game_next': ('revision',), 'game_handwriting': ('revision',)}[kind]
                     if any(type(data.get(field)) is not int for field in fields):
                         raise ValueError('Board size, Cell coordinates and game revision must be integers')
                     if kind == 'game_start':
-                        if data.get('input_source', 'click') not in ('click', 'vision'):
+                        if data.get('input_source', 'click') not in ('click', 'vision', 'handwriting'):
                             raise ValueError('Unknown move input mode')
                         mode = data.get('mode', 'classic')
                         if not isinstance(mode, str) or (mode, data['size']) not in WIN_LENGTHS:
@@ -225,7 +240,7 @@ def make_handler(session, preview=None):
                         if (data.get('first', 'player') not in ('player', 'ai')
                                 or data.get('mark', 'X') not in ('X', 'O')):
                             raise ValueError('Invalid turn order or symbol')
-                    job = session.submit(kind, game_request=data)
+                    job = session.submit(kind, strokes=data.get('strokes'), game_request=data)
                     return self.send(202, {'job': job, 'accepted': True})
                 if self.path not in ('/api/draw', '/api/reset'):
                     return self.send(404, {'error': 'Not found'})
