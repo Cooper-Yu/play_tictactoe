@@ -17,6 +17,9 @@ def generate_launch_description():
             Path.home()/'ros2_ws/src/play_tictactoe/data/cloud_gui')),
         DeclareLaunchArgument('grid_points', default_value=str(share/'config/grid_points_real.json')),
         DeclareLaunchArgument('cpu_threads', default_value='2'),
+        DeclareLaunchArgument('weights', default_value=str(
+            share/'models/xo_real_nine_zero_candidate.pt'),
+            description='Shared X/O detector for both 3x3 and 9x9 games'),
         SetEnvironmentVariable('PYTHONPATH', [
             str(Path.home()/'ros2_ws/src/play_tictactoe/.cloud-python'),
             os.pathsep, os.environ.get('PYTHONPATH', '')]),
@@ -27,8 +30,7 @@ def generate_launch_description():
         ExecuteProcess(cmd=[
             sys.executable, '-m', 'tictactoe_gui.real_game',
             '--workstation-url', 'http://127.0.0.1:8765/',
-            '--weights', str(share/'models/xo_real.pt'),
-            '--nine-weights', str(share/'models/xo_real_nine.pt'),
+            '--weights', LaunchConfiguration('weights'),
             '--grid-points', LaunchConfiguration('grid_points'),
             '--device', 'cpu', '--cpu-threads', LaunchConfiguration('cpu_threads'),
             '--port', '8775', '--output', LaunchConfiguration('output_dir')],

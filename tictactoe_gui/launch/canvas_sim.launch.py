@@ -36,7 +36,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('port', default_value='8765'),
         DeclareLaunchArgument('fast_game', default_value='false'),
-        DeclareLaunchArgument('preview_weights', default_value=''),
+        DeclareLaunchArgument('preview_weights', default_value=str(
+            Path(get_package_share_directory('tictactoe_gui'))/'models/xo_real_nine_zero_candidate.pt')),
         DeclareLaunchArgument('preview_device', default_value='cpu'),
         DeclareLaunchArgument('output_dir', default_value='~/.local/share/play_tictactoe/canvas_sim'),
         OpaqueFunction(function=start)])

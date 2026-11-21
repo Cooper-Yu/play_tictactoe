@@ -5,7 +5,7 @@ setup(
     data_files=[('share/ament_index/resource_index/packages',['resource/tictactoe_gui']),
                 ('share/tictactoe_gui',['package.xml']),
                 ('share/tictactoe_gui/launch',['launch/canvas_sim.launch.py', 'launch/localization_sim.launch.py', 'launch/localization_real.launch.py', 'launch/robot_games_real.launch.py']),
-                ('share/tictactoe_gui/models',['models/xo_real.pt', 'models/xo_real_nine.pt']),
+                ('share/tictactoe_gui/models',['models/xo_real.pt', 'models/xo_real_nine.pt', 'models/xo_real_nine_zero_candidate.pt']),
                 ('share/tictactoe_gui/config',['config/grid_points_real.json'])],
     install_requires=['setuptools'], zip_safe=True,
     maintainer='cooper', maintainer_email='liuzi9240@gmail.com',

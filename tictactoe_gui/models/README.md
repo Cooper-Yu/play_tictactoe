@@ -51,3 +51,17 @@ No separate local GUI process is required.
 - New held-out reviewed cells: 24TP/0FN/0FP on 10 correlated frames from two layouts; 16 unreadable cell observations excluded. This is not full-board accuracy.
 - Experimental full-frame historical 3x3 regression: 35/45 exact versus current 3x3 model 39/45. Not a default replacement for either production model.
 - Included for user-authorized cloud game testing; launch with an explicit weights path. Existing xo_real.pt and xo_real_nine.pt unchanged.
+
+
+## Unified test default (2026-11-22)
+
+By user selection, robot_games_real.launch.py now defaults its shared `weights`
+argument to xo_real_nine_zero_candidate.pt. No separate nine-weights override is
+passed, so 3x3 and 9x9 use the same detector. canvas_sim.launch.py uses the same
+file as its default preview_weights. All three model files remain installed.
+The prior regression warning above is historical evidence, not superseded by
+this configuration choice. Selecting a default is not an accuracy claim.
+
+Override `weights:=/absolute/model.pt` for real launch or
+`preview_weights:=/absolute/model.pt` for simulation to compare or roll back.
+The standalone real_game CLI still accepts explicit --weights and --nine-weights.

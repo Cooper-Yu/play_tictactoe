@@ -229,7 +229,7 @@ can choose the opening side and their mark independently. Round two switches the
 
 ```bash
 ros2 launch tictactoe_gui canvas_sim.launch.py \
-  preview_weights:="$HOME/ros2_ws/src/play_tictactoe/data/training/yolo26n_sim_v1_baseline_20261118/weights/best.pt" \
+  preview_weights:="$HOME/ros2_ws/src/play_tictactoe/tictactoe_gui/models/xo_real_nine_zero_candidate.pt" \
   preview_device:=0
 ```
 
@@ -301,7 +301,7 @@ loopback ports 8765 and 8775. Do not start separate copies on those ports.
 The launch preserves real localization records under `data/localization_real`
 and stores game evidence under `data/cloud_gui`. Startup does not move the arm.
 YOLO warms up before the game reports readiness, using CPU with two threads.
-The bundled `models/xo_real.pt` supplies the validated real-camera model.
+The bundled `models/xo_real_nine_zero_candidate.pt` is the user-selected shared test model; older real-camera models remain available for rollback.
 
 `grid_points` accepts a JSON file containing four internal 3x3 grid intersections
 in raw-image pixels, ordered top-left, top-right, bottom-right, bottom-left.
@@ -366,3 +366,12 @@ physical/simulated board and explicitly clear/start a new game after failure.
 This first implementation is simulation-only; the real server rejects freehand
 requests until the hardware integration is separately validated. Direct human
 writing on a physical tablet remains a separate future input integration.
+
+
+### Shared detector selected for the next tests
+
+The default real-game launch and simulation canvas launch load
+`models/xo_real_nine_zero_candidate.pt` for both 3x3 and 9x9. The original
+`xo_real.pt` and `xo_real_nine.pt` remain bundled for comparison and rollback.
+Use real-launch `weights:=...` or simulation `preview_weights:=...` to override.
+This user-selected test default does not imply it outperforms every older model.
