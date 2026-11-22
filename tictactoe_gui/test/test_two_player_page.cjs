@@ -26,5 +26,16 @@ function confirm(r,c){state.game.board[r][c]=state.game.turn;state.game.turn=sta
   state.game.winner=mark;state.game.phase='finished';await p.waitForFunction(mark=>document.querySelector('#result').textContent===`Player ${mark} wins`,mark);
 
  }
- await p.locator('#opponent').selectOption('ai');await p.locator('#first').selectOption('player');await p.locator('#start').click();await p.waitForFunction(()=>document.querySelector('#roles').textContent.includes('AI plays'));assert.equal(requests.at(-1).opponent,'ai');assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'gui-result.json'),JSON.stringify({passed:true,requests,tests:['3x3 O first','9x9 X first','X/O alternating','no precommit before confirmation','dual winner labels','AI mode preserved'],pageErrors:errors},null,2));console.log('PASS: actual headless Chrome frontend controls and pending/confirmed turns');
+ await p.locator('#opponent').selectOption('ai');await p.locator('#first').selectOption('player');await p.locator('#start').click();await p.waitForFunction(()=>document.querySelector('#roles').textContent.includes('AI plays'));assert.equal(requests.at(-1).opponent,'ai');
+ const beforePause=requests.length;
+ state.state='blocked';state.busy=false;state.game.phase='blocked';
+ await p.waitForFunction(()=>document.querySelector('#connection').textContent==='Robot connected · Game paused');
+ assert(await p.locator('#start').isDisabled());assert(!(await p.locator('#reset').isDisabled()));
+ state.robot_fresh=false;
+ await p.waitForFunction(()=>document.querySelector('#connection').textContent==='Waiting for robot feedback or camera');
+ assert(await p.locator('#reset').isDisabled());
+ state.robot_fresh=true;
+ await p.waitForFunction(()=>document.querySelector('#connection').textContent==='Robot connected · Game paused');
+ assert.equal(requests.length,beforePause,'Connection diagnostics must not replay game commands');
+ assert.deepEqual(errors,[]);fs.writeFileSync(path.join(out,'gui-result.json'),JSON.stringify({passed:true,requests,tests:['3x3 O first','9x9 X first','X/O alternating','no precommit before confirmation','dual winner labels','AI mode preserved'],pageErrors:errors},null,2));console.log('PASS: actual headless Chrome frontend controls and pending/confirmed turns');
  }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}})().catch(e=>{console.error(e);process.exitCode=1});

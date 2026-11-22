@@ -19,6 +19,8 @@ const server=http.createServer((req,res)=>{
  try{browser=await chromium.launch({channel:'chrome',headless:true});const p=await browser.newPage({viewport:{width:1400,height:1000}});let errors=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',d=>d.accept());await p.goto(`http://127.0.0.1:${server.address().port}/`);await p.waitForFunction(()=>!document.querySelector('#start').disabled);
  for(const mode of ['3','four']){
  await p.locator(`input[value="${mode}"]`).check();await p.locator('#opponent').selectOption('human');await p.locator('#input-source').selectOption('handwriting');await p.locator('#start').click();await p.locator('#handwriting').waitFor({state:'visible'});
+ await p.waitForFunction(size=>document.querySelectorAll('#board button').length===size*size
+   && document.querySelector('#status').textContent.includes('Handwrite one X'),mode==='3'?3:9);
  const b=await p.locator('#handwriting').boundingBox();
  async function line(a,c){await p.mouse.move(b.x+a[0]*b.width,b.y+a[1]*b.height);await p.mouse.down();await p.mouse.move(b.x+c[0]*b.width,b.y+c[1]*b.height,{steps:6});await p.mouse.up();}
  await line([.1,.1],[.2,.2]);await line([.2,.1],[.1,.2]);await p.locator('#undo-stroke').click();assert.equal(await p.locator('#stroke-count').innerText(),'1 strokes');await p.locator('#clear-draft').click();assert(await p.locator('#submit-handwriting').isDisabled());

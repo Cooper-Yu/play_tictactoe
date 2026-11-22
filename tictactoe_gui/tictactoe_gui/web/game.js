@@ -187,8 +187,11 @@ function render() {
   const human = game?.human ?? get('mark').value;
   get('roles').textContent = twoPlayers ? 'Player X · Player O'
     : 'You play ' + human + ' · AI plays ' + (human === 'X' ? 'O' : 'X');
-  get('connection').textContent = ready ? (realEnvironment ? 'Robot connected' : 'Gazebo connected')
-    : (online ? (realEnvironment ? 'Waiting for robot feedback or camera' : 'Simulation is not ready') : 'Disconnected');
+  const robotConnected = online && token && state?.camera_fresh && state?.robot_fresh;
+  get('connection').textContent = realEnvironment
+    ? (robotConnected ? (state.state === 'blocked' ? 'Robot connected · Game paused' : 'Robot connected')
+      : (online ? 'Waiting for robot feedback or camera' : 'Disconnected'))
+    : (ready ? 'Gazebo connected' : (online ? 'Simulation is not ready' : 'Disconnected'));
   if (realEnvironment) {
     get('camera-heading').textContent = state?.frame_source === 'saved' ? 'Saved robot camera image' : 'Robot camera';
   }

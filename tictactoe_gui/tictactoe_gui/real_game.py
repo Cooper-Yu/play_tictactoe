@@ -178,6 +178,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                     game.game = None
                     session.update(game=None, vision=None)
                 elif kind == 'game_start':
+                    session.update(vision=None)
                     client.command(kind='reset', speed=.1)
                     client.park('clear')
                     game.start(request.get('size', 3), job['job'], mode=request.get('mode', 'classic'),
