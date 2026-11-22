@@ -205,6 +205,9 @@ function render() {
   stop.disabled = !online || !state?.busy;
   const resetReady = online && token && state && !['connecting','offline'].includes(state.state)
     && (!realEnvironment || (state.camera_fresh && state.robot_fresh));
+  const resumeTurn = get('resume-turn');
+  resumeTurn.hidden = !realEnvironment || !state?.continuation?.available || state?.state !== 'blocked';
+  resumeTurn.disabled = !online || !token || busy || !state?.camera_fresh || !state?.robot_fresh;
   reset.disabled = !resetReady || busy || (!game && state.state !== 'blocked');
   const points = get('points');
   points.hidden = !showPoints;
@@ -382,6 +385,12 @@ get('opponent').addEventListener('change', render);
 get('next').addEventListener('click', () => act('/api/game/next', {revision: state.game.revision}));
 stop.addEventListener('click', () => act('/api/stop', {}));
 reset.addEventListener('click', () => act('/api/reset', {}));
+get('resume-turn').addEventListener('click', () => {
+  if (confirm('Inspect the pen and board first. The arm will return to zero and resume camera observation. No original stroke will be replayed. Continue?')) {
+    act('/api/game/resume', {revision: state.game.revision,
+      original_job: state.continuation.original_job, inspected: true});
+  }
+});
 document.querySelectorAll('input[name="size"]').forEach(input => input.addEventListener('change', render));
 get('mark').addEventListener('change', render);
 new ResizeObserver(positionWinLine).observe(board);

@@ -91,6 +91,22 @@ def real_game_worker(session, *, url, perception, restore=None):
     camera_thread.start()
     gate = None
     gate_revision = None
+    pending_turn = None
+    resumed_strokes = None
+
+    def checkpoint(stage, job=None):
+        nonlocal pending_turn
+        if job is not None:
+            pending_turn = dict(original_job=job['job'], stage=stage,
+                                strokes=job.get('strokes'),
+                                board=[row[:] for row in session.status()['game']['board']],
+                                available=False)
+        elif pending_turn is not None:
+            pending_turn['stage'] = stage
+        session.update(continuation=pending_turn)
+        temporary = session.output/'turn-recovery.tmp'
+        temporary.write_text(json.dumps(pending_turn, indent=2))
+        temporary.replace(session.output/'turn-recovery.json')
 
     def observe():
         nonlocal gate, gate_revision
@@ -121,6 +137,13 @@ def real_game_worker(session, *, url, perception, restore=None):
         return found
 
     def register(found, revision):
+        nonlocal resumed_strokes
+        if resumed_strokes:
+            verify_handwriting_cell(resumed_strokes, found, game.game.rows)
+            verify_handwriting_shape(resumed_strokes, game.game.width, game.game.height)
+        resumed_strokes = None
+        if pending_turn is not None:
+            checkpoint('committing')
         timing.emit('player_confirmed', revision=revision, found=found)
         session.update(message='Three camera frames confirmed. Submitting player move.')
         game.register_observed_move(*found, revision)
@@ -172,12 +195,38 @@ def real_game_worker(session, *, url, perception, restore=None):
                 session.update(state='running')
                 kind, request = job['kind'], job['game_request'] or {}
                 timing.emit('job_begin', job=job['job'], kind=kind)
-                if kind == 'reset':
+                if kind == 'game_resume':
+                    if pending_turn is None or not pending_turn['available']:
+                        raise RuntimeError('Paused turn is no longer available')
+                    actual = client.get('status', timeout=3)
+                    if actual.get('feedback_recovery'):
+                        client.recover_feedback()
+                        actual = client.get('status', timeout=3)
+                    if (actual['busy'] or not actual['fresh'] or actual['state'] != 'ready'
+                            or not actual.get('pose') or actual['pose']['z'] < .2109):
+                        raise RuntimeError('Raise the pen to at least 211 mm with the workbench before resuming')
+                    if session.status()['game']['board'] != pending_turn['board']:
+                        raise RuntimeError('The board changed; paused turn cannot be resumed')
+                    if pending_turn.get('strokes'):
+                        verify_handwriting_shape(pending_turn['strokes'], game.game.width, game.game.height)
+                    client.park('zero')
+                    resumed_strokes = pending_turn.get('strokes')
+                    game.game.phase = 'playing'
+                    game._update('player', job['job'])
+                    gate_revision = None
+                    pending_turn = None
+                    checkpoint('resumed')
+                    session.update(vision=None)
+                elif kind == 'reset':
+                    pending_turn = resumed_strokes = None
+                    checkpoint('cleared')
                     client.command(kind='reset', speed=.1)
                     client.park('zero')
                     game.game = None
                     session.update(game=None, vision=None)
                 elif kind == 'game_start':
+                    pending_turn = resumed_strokes = None
+                    checkpoint('new_game')
                     session.update(vision=None)
                     client.command(kind='reset', speed=.1)
                     client.park('clear')
@@ -188,21 +237,26 @@ def real_game_worker(session, *, url, perception, restore=None):
                     gate_revision = None
                     session.update(vision=None)
                 elif kind in ('game_vision_move', 'game_handwriting'):
+                    checkpoint('preparing', job)
                     mark = game.active_mark
                     session.update(message='Drawing the player mark, then waiting for camera confirmation.')
                     timing.emit('player_draw_begin', job=job['job'])
                     if kind == 'game_handwriting':
                         strokes = real_handwriting_strokes(job['strokes'], actions.width, actions.height)
                         client.park('clear')
+                        checkpoint('drawing')
                         client.command(kind='canvas', strokes=strokes, speed=.45)
                     else:
+                        checkpoint('drawing')
                         center = game.game.cell_center(request['row'], request['col'])
                         if mark == 'X':
                             actions.draw_x(center, game.game.cell_size*.55)
                         else:
                             actions.draw_o(center, game.game.cell_size*.25)
+                    checkpoint('returning_to_zero')
                     if kind == 'game_handwriting' or game.opponent == 'human':
                         client.park('zero')
+                    checkpoint('camera_confirmation')
                     timing.emit('player_draw_complete', job=job['job'])
                     session.update(message='Drawing completed; waiting for three consistent camera frames')
                     deadline = time.monotonic()+45
@@ -220,8 +274,22 @@ def real_game_worker(session, *, url, perception, restore=None):
                     register(found, job['job'])
                 else:
                     raise ValueError('Unsupported real game operation')
+                pending_turn = None
+                checkpoint('completed')
                 session.update(state='ready', busy=False, message='Operation completed')
             except Exception as error:
+                if pending_turn is not None:
+                    pending_turn['available'] = (pending_turn['stage'] != 'committing'
+                        and session.status()['game']['board'] == pending_turn['board'])
+                    pending_turn['error'] = str(error)
+                    try:
+                        actual = client.get('status', timeout=3)
+                        pending_turn['motion_checkpoint'] = {key:actual.get(key) for key in
+                            ('job', 'state', 'busy', 'fresh', 'pose', 'last_stop',
+                             'drawing_progress', 'feedback_recovery')}
+                    except Exception as observation_error:
+                        pending_turn['observation_error'] = str(observation_error)
+                    checkpoint(pending_turn['stage'])
                 if game.game is not None:
                     game.block(job['job'])
                 session.update(state='blocked', busy=False, message=str(error))

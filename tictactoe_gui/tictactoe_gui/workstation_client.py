@@ -66,6 +66,7 @@ class Workstation:
             time.sleep(.25)
 
     def command(self, **command):
+        self.last_command_job = None
         if self.cancelled():
             raise RuntimeError('Operation cancelled')
         timing = getattr(self, 'timing', lambda event, **fields: None)
@@ -79,6 +80,7 @@ class Workstation:
         if response.status_code >= 400:
             raise RuntimeError(f'Workstation rejected command: {response.text}')
         job = response.json()['job']
+        self.last_command_job = job
         timing('command_accepted', job=job, kind=command['kind'])
         print('JOB', job, command['kind'], flush=True)
         previous_stage = None
@@ -130,12 +132,66 @@ class Workstation:
             'Origin': origin.scheme+'://'+origin.netloc, 'X-Workbench-Token': self.token}, timeout=10)
         response.raise_for_status()
 
+    def recover_feedback(self, timeout=35.):
+        """Wait for terminal execution and stationary fresh feedback; never replay a job."""
+        deadline = time.monotonic()+timeout
+        stopped_job = None
+        while time.monotonic() < deadline:
+            if self.cancelled():
+                raise RuntimeError('Recovery cancelled; no new motion sent')
+            state = self.get('status', timeout=3)
+            incident = state.get('last_stop', {})
+            if incident.get('source') != 'feedback_guard':
+                raise RuntimeError('Only feedback-guard stops can recover automatically')
+            if stopped_job is None:
+                stopped_job = incident['job']
+            if state['job'] != stopped_job or incident['job'] != stopped_job:
+                raise RuntimeError('Another operator changed the recovery job')
+            recovery = state.get('feedback_recovery') or {}
+            if recovery.get('phase') == 'timeout':
+                raise RuntimeError('Feedback recovery timed out; inspection is required')
+            self.progress(dict(state, message='Waiting for fresh stationary feedback; preserving game progress'))
+            if (not state['busy'] and state['fresh'] and state['state'] == 'recovering'
+                    and recovery.get('phase') == 'confirmation'):
+                origin = urlsplit(self.url)
+                response = self.http.post(self.url+'api/command',
+                    json={'kind':'acknowledge_recovery', 'job':stopped_job},
+                    headers={'Origin':origin.scheme+'://'+origin.netloc,
+                             'X-Workbench-Token':self.token}, timeout=10)
+                response.raise_for_status()
+                checked = self.get('status', timeout=3)
+                if (checked['job'] != stopped_job or checked['busy'] or not checked['fresh']
+                        or checked['state'] != 'ready' or checked.get('feedback_recovery')):
+                    raise RuntimeError('Recovery acknowledgement was not verified')
+                self.diagnostic('feedback_recovery_acknowledged', checked)
+                return checked
+            time.sleep(.2)
+        raise TimeoutError('Feedback did not recover; no motion replayed')
+
     def park(self, name='clear'):
         getattr(self, 'timing', lambda *a, **k: None)('park_begin', name=name)
-        state = self.command(kind='preset', name=name, speed=1.)
-        if not state.get('plan'):
-            raise RuntimeError('No verified preset plan')
-        self.command(kind='execute')
+        for attempt in range(2):
+            try:
+                state = self.command(kind='preset', name=name, speed=1.)
+                if not state.get('plan'):
+                    raise RuntimeError('No verified preset plan')
+                self.command(kind='execute')
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
+                state = self.get('status', timeout=3)
+                incident = state.get('last_stop', {})
+                if (incident.get('source') != 'feedback_guard'
+                        or incident.get('job') != getattr(self, 'last_command_job', None)
+                        or state['job'] != self.last_command_job):
+                    raise
+                recovered = self.recover_feedback()
+                if not recovered.get('pose') or recovered['pose']['z'] < .2109:
+                    raise RuntimeError('Preset recovery is below clearance; inspect and raise the pen first')
+                # A new absolute preset plan starts at the actual recovered state.
+                # The interrupted trajectory is never sent again.
+                self.diagnostic('replanning_absolute_preset_after_feedback', state)
         getattr(self, 'timing', lambda *a, **k: None)('park_complete', name=name)
 
     def frame(self, name):

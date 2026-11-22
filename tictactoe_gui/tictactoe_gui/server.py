@@ -69,7 +69,7 @@ class CanvasSession:
                     or game_request.get('first', 'player') != 'player'):
                 raise ValueError('Two players require a supported board and first-symbol selection')
         if self.environment == 'real':
-            if kind not in ('game_start', 'game_vision_move', 'game_handwriting', 'reset'):
+            if kind not in ('game_start', 'game_vision_move', 'game_handwriting', 'game_resume', 'reset'):
                 raise ValueError('Real games require visually confirmed moves')
             if kind == 'game_start' and (
                     (game_request.get('mode', 'classic'), game_request['size']) not in VISION_MODES
@@ -79,9 +79,17 @@ class CanvasSession:
                     prepare_game_strokes(strokes) if kind == 'game_handwriting' else [])
         with self.lock:
             if self.state['busy'] or self.state['state'] in ('connecting', 'offline') or (
-                    self.state['state'] == 'blocked' and kind != 'reset'):
+                    self.state['state'] == 'blocked' and kind not in ('reset', 'game_resume')):
                 raise RuntimeError('Not ready or another task is running')
             current = self.state["game"]
+            if kind == 'game_resume':
+                pending = self.state.get('continuation') or {}
+                if (self.environment != 'real' or self.state['state'] != 'blocked'
+                        or not pending.get('available') or current is None
+                        or current['revision'] != game_request.get('revision')
+                        or pending['original_job'] != game_request.get('original_job')
+                        or game_request.get('inspected') is not True):
+                    raise RuntimeError('No inspected paused turn matches this request')
             if kind == "draw" and current is not None:
                 raise RuntimeError("Clear the board to exit the current game first")
             if kind == "game_next":
@@ -223,12 +231,14 @@ def make_handler(session, preview=None):
                 game_routes = {'/api/game/start': 'game_start', '/api/game/move': 'game_move',
                                '/api/game/next': 'game_next',
                                '/api/game/simulate-player': 'game_vision_move',
-                               '/api/game/handwriting': 'game_handwriting'}
+                               '/api/game/handwriting': 'game_handwriting',
+                               '/api/game/resume': 'game_resume'}
                 if self.path in game_routes:
                     kind = game_routes[self.path]
                     fields = {'game_start': ('size',), 'game_move': ('row', 'col', 'revision'),
                               'game_vision_move': ('row', 'col', 'revision'),
-                              'game_next': ('revision',), 'game_handwriting': ('revision',)}[kind]
+                              'game_next': ('revision',), 'game_handwriting': ('revision',),
+                              'game_resume': ('revision', 'original_job')}[kind]
                     if any(type(data.get(field)) is not int for field in fields):
                         raise ValueError('Board size, Cell coordinates and game revision must be integers')
                     if kind == 'game_start':
