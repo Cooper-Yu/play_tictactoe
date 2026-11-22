@@ -207,6 +207,7 @@ function render() {
     && (!realEnvironment || (state.camera_fresh && state.robot_fresh));
   const resumeTurn = get('resume-turn');
   resumeTurn.hidden = !realEnvironment || !state?.continuation?.available || state?.state !== 'blocked';
+  resumeTurn.textContent = state?.continuation?.kind === 'grid' ? 'Resume remaining grid after inspection' : 'Resume turn after inspection';
   resumeTurn.disabled = !online || !token || busy || !state?.camera_fresh || !state?.robot_fresh;
   reset.disabled = !resetReady || busy || (!game && state.state !== 'blocked');
   const points = get('points');
@@ -386,7 +387,10 @@ get('next').addEventListener('click', () => act('/api/game/next', {revision: sta
 stop.addEventListener('click', () => act('/api/stop', {}));
 reset.addEventListener('click', () => act('/api/reset', {}));
 get('resume-turn').addEventListener('click', () => {
-  if (confirm('Inspect the pen and board first. The arm will return to zero and resume camera observation. No original stroke will be replayed. Continue?')) {
+  const explanation = state?.continuation?.kind === 'grid'
+    ? 'Inspect the pen and board first. Only the unstarted grid strokes will be drawn, then the arm returns to zero. Continue?'
+    : 'Inspect the pen and board first. The arm will return to zero and resume camera observation. No original stroke will be replayed. Continue?';
+  if (confirm(explanation)) {
     act('/api/game/resume', {revision: state.game.revision,
       original_job: state.continuation.original_job, inspected: true});
   }

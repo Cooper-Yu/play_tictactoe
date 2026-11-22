@@ -14,6 +14,7 @@ import requests
 from tictactoe_coordinator.game_coordinator import GameCoordinator
 from tictactoe_gui.real_board_perception import RealBoardPerception
 from tictactoe_gui.game_timing import Timeline
+from tictactoe_gui.grid_recovery import unstarted_grid_tail
 from tictactoe_gui.server import CanvasSession, make_handler
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
 from tictactoe_perception.stable_player_move import StablePlayerMove
@@ -209,6 +210,11 @@ def real_game_worker(session, *, url, perception, restore=None):
                         raise RuntimeError('The board changed; paused turn cannot be resumed')
                     if pending_turn.get('strokes'):
                         verify_handwriting_shape(pending_turn['strokes'], game.game.width, game.game.height)
+                    if pending_turn.get('kind') == 'grid':
+                        client.park('clear')
+                        checkpoint('grid_remaining')
+                        client.command(kind='canvas', strokes=pending_turn['remaining_strokes'], speed=.45)
+                        checkpoint('grid_returning')
                     client.park('zero')
                     resumed_strokes = pending_turn.get('strokes')
                     game.game.phase = 'playing'
@@ -278,6 +284,22 @@ def real_game_worker(session, *, url, perception, restore=None):
                 checkpoint('completed')
                 session.update(state='ready', busy=False, message='Operation completed')
             except Exception as error:
+                if ((kind == 'game_start' or (kind == 'game_resume' and pending_turn
+                        and pending_turn.get('kind') == 'grid')) and game.game is not None
+                        and getattr(client, 'last_command_kind', None) == 'canvas'):
+                    try:
+                        actual = client.get('status', timeout=3)
+                        paths = (pending_turn['remaining_strokes'] if pending_turn else
+                            actions.grid_strokes(game.game.center, game.game.width, game.game.height,
+                                                 game.game.rows, game.game.columns))
+                        tail, completed = unstarted_grid_tail(paths, actual, client.last_command_job)
+                        pending_turn = dict(kind='grid', original_job=job['job'], stage='grid_remaining',
+                            strokes=None, remaining_strokes=tail, completed_grid_strokes=completed,
+                            board=[row[:] for row in session.status()['game']['board']], available=True)
+                    except Exception as grid_error:
+                        session.update(grid_recovery_error=str(grid_error))
+                        if pending_turn is not None:
+                            pending_turn['stage'] = 'committing'
                 if pending_turn is not None:
                     pending_turn['available'] = (pending_turn['stage'] != 'committing'
                         and session.status()['game']['board'] == pending_turn['board'])

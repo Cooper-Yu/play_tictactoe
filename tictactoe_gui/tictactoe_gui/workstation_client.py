@@ -67,6 +67,7 @@ class Workstation:
 
     def command(self, **command):
         self.last_command_job = None
+        self.last_command_kind = command['kind']
         if self.cancelled():
             raise RuntimeError('Operation cancelled')
         timing = getattr(self, 'timing', lambda event, **fields: None)
