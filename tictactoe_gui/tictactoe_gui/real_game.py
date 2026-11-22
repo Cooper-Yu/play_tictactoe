@@ -204,6 +204,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                     if kind == 'game_handwriting' or game.opponent == 'human':
                         client.park('zero')
                     timing.emit('player_draw_complete', job=job['job'])
+                    session.update(message='Drawing completed; waiting for three consistent camera frames')
                     deadline = time.monotonic()+45
                     found = None
                     while time.monotonic() < deadline and not session.stop.is_set():
