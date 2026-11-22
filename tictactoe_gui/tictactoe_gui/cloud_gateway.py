@@ -40,9 +40,9 @@ def make_gateway(public_url, upstream_port=8765, game_port=None):
                     path = '/game'
             game_routes = {'/game', '/game.js', '/game.css', '/api/config', '/api/status',
                            '/api/game/camera', '/api/game/perception', '/api/game/frame',
-                           '/api/game/start', '/api/game/simulate-player', '/api/reset', '/api/stop'}
+                           '/api/game/start', '/api/game/simulate-player', '/api/game/handwriting', '/api/reset', '/api/stop'}
             allowed = game_routes if is_game else routes
-            posts = ('/api/game/start', '/api/game/simulate-player', '/api/reset', '/api/stop') if is_game else (
+            posts = ('/api/game/start', '/api/game/simulate-player', '/api/game/handwriting', '/api/reset', '/api/stop') if is_game else (
                 '/api/command', '/api/stop', '/api/canvas')
             if path not in allowed or (self.command == 'POST' and path not in posts):
                 self.send_error(404)
@@ -55,7 +55,7 @@ def make_gateway(public_url, upstream_port=8765, game_port=None):
                     return
                 try:
                     size = int(self.headers.get('Content-Length', '0'))
-                    if not 0 < size <= (512000 if path == '/api/canvas' else 4096):
+                    if not 0 < size <= (512000 if path in ('/api/canvas', '/api/game/handwriting') else 4096):
                         raise ValueError('Invalid body size')
                 except ValueError:
                     self.send_error(400)

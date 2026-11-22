@@ -83,6 +83,17 @@ def test_cloud_game_namespace_keeps_workbench_and_game_separate(tmp_path):
             assert config['workstation_url'] == origin+'/slot/webpage/'
         with urlopen(base+'/api/config') as response:
             assert json.load(response)['token'] == work.token
+        game.update(state='ready', game=dict(size=3,phase='player',revision=7,
+                    input_source='handwriting',board=[['']*3 for _ in range(3)]))
+        points=[[.1+i*.0002,.1+i*.0002] for i in range(500)]
+        body=json.dumps({'revision':7,'strokes':[points]}).encode()
+        assert len(body)>4096
+        headers={'Origin':origin,'X-Canvas-Token':game.token}
+        with urlopen(Request(base+'/game/api/game/handwriting',data=body,headers=headers)) as response:
+            assert response.status==202
+        queued=game.jobs.get_nowait()
+        assert queued['kind']=='game_handwriting' and queued['strokes']==[points]
+        assert not any(any(row) for row in game.status()['game']['board'])
         game.update(busy=True)
         headers = {'Origin':origin, 'X-Canvas-Token':game.token}
         with urlopen(Request(base+'/game/api/stop', data=b'{}', headers=headers)) as response:
