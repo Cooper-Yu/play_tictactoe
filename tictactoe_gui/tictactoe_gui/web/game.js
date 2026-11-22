@@ -257,6 +257,7 @@ function render() {
         ? (handwriting ? 'Handwrite one ' + expectedMark + ' and press Draw and confirm' : 'Select an empty cell for proxy drawing ' + expectedMark) + ', Submit automatically after stable camera recognition'
         : 'Select an empty cell to draw ' + expectedMark);
     }
+    else if (game.phase === 'blocked' && state?.continuation?.available) message = state.message + '. Inspect the board, then use Resume; no original player stroke is replayed.';
     else message = outcome ? 'Game finished. Start a new game' : phases[game.phase] || message;
   }
   get('status').textContent = notice || message;

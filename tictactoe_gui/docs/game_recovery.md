@@ -32,6 +32,15 @@ This first version does not automatically reconstruct a partially drawn stroke,
 resume a partially executed AI turn, or restore a live game after process restart.
 The persisted checkpoint is evidence, not permission for unattended restart.
 
+Grid preparation has a separate conservative continuation: only a stop before
+the active unsegmented line begins (transfer/lowering stage) permits drawing
+the unstarted suffix. Completed source strokes are omitted. A stop during drawing
+or an inconsistent/mismatched progress record does not enable grid replay.
+
+Live camera observation records numeric class confidence and the rectified
+polygon per cell alongside the exact observed frame sequence. This adds evidence;
+it does not change inference thresholds or accepted board states.
+
 ## Verification before real deployment
 
 2026-11-22, WSL Ubuntu-22.04 / ROS2 Humble: GUI, coordinator and perception

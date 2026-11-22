@@ -88,8 +88,13 @@ class PerceptionPreview:
             raise ValueError("Unsupported board size")
         with self.lock:
             raw, transform = self._camera_frame(image)
-            return {cell: frozenset(candidates)
-                    for cell, candidates in self._detect(raw, transform, size).items()}
+            occupied = self._detect(raw, transform, size)
+            self.last_detection_details = [
+                dict(row=row+1, column=col+1, mark=mark, confidence=float(value[0]),
+                     rectified_polygon=value[1].tolist())
+                for (row, col), candidates in occupied.items()
+                for mark, value in candidates.items()]
+            return {cell: frozenset(candidates) for cell, candidates in occupied.items()}
 
     def _detect(self, raw, transform, size):
         if self.model is None:

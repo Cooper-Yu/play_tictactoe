@@ -128,6 +128,7 @@ def real_game_worker(session, *, url, perception, restore=None):
         timing.emit('vision_frame', sequence=sequence, seconds=time.monotonic()-detect_started,
                     consecutive=gate.count, confirmed=found)
         evidence = dict(sequence=sequence,
+                        detections=getattr(perception, 'last_detection_details', []),
                         cells={f'{r+1},{c+1}':sorted(m) for (r,c),m in cells.items()},
                         consecutive=gate.count, confirmed=found)
         with (session.output/'observations.jsonl').open('a') as stream:
@@ -218,7 +219,11 @@ def real_game_worker(session, *, url, perception, restore=None):
                     client.park('zero')
                     resumed_strokes = pending_turn.get('strokes')
                     game.game.phase = 'playing'
-                    game._update('player', job['job'])
+                    if (pending_turn.get('kind') == 'grid' and game.opponent == 'ai'
+                            and game.game.turn != game.human):
+                        checkpoint('committing')
+                        game._ai_turn(job['job'])
+                    game._update('finished' if game.game.outcome else 'player', job['job'])
                     gate_revision = None
                     pending_turn = None
                     checkpoint('resumed')
