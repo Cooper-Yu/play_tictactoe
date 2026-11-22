@@ -214,7 +214,8 @@ def real_game_worker(session, *, url, perception, restore=None):
                     if pending_turn.get('kind') == 'grid':
                         client.park('clear')
                         checkpoint('grid_remaining')
-                        client.command(kind='canvas', strokes=pending_turn['remaining_strokes'], speed=.45)
+                        if pending_turn['remaining_strokes']:
+                            client.command(kind='canvas', strokes=pending_turn['remaining_strokes'], speed=.45)
                         checkpoint('grid_returning')
                     client.park('zero')
                     resumed_strokes = pending_turn.get('strokes')
@@ -298,6 +299,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                             actions.grid_strokes(game.game.center, game.game.width, game.game.height,
                                                  game.game.rows, game.game.columns))
                         tail, completed = unstarted_grid_tail(paths, actual, client.last_command_job)
+                        completed += pending_turn.get('completed_grid_strokes', 0) if pending_turn else 0
                         pending_turn = dict(kind='grid', original_job=job['job'], stage='grid_remaining',
                             strokes=None, remaining_strokes=tail, completed_grid_strokes=completed,
                             board=[row[:] for row in session.status()['game']['board']], available=True)

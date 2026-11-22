@@ -67,3 +67,18 @@ The seven added cases verify eligible initial approach, contact/partial progress
 caller stop, job mismatch, and refusal to retry an unknown transport outcome.
 Real evidence for this automatic path is recorded separately from the successful
 inspected player-turn and remaining-grid-strokes recovery tests.
+## Raised lift checkpoint
+
+The exact N_lift stage follows a successful full contact-path result in
+StrokeDrawing.run_strokes. For an unsegmented grid, a terminal same-job stop at
+that stage may omit the already drawn line only when current feedback is fresh,
+the workstation is idle, and measured link6 height is 211-217 mm (0.1 mm boundary
+tolerance). A low, stale, active, segmented or mismatched checkpoint is rejected.
+Resume still requires operator inspection and existing feedback recovery gates.
+An empty remaining suffix returns to zero without issuing an empty canvas job.
+Completed-line counts accumulate across repeated resumes.
+
+2026-11-22 local regression after this extension: 241 functional tests passed,
+3 linter tests deselected. Added cases cover raised lift, low/stale/active state,
+segmentation, nonfinite height, stage numbering and the final-line suffix.
+Runtime verification of this exact lift extension is recorded separately.
