@@ -69,11 +69,11 @@ class CanvasSession:
                     or game_request.get('first', 'player') != 'player'):
                 raise ValueError('Two players require a supported board and first-symbol selection')
         if self.environment == 'real':
-            if kind not in ('game_start', 'game_vision_move', 'reset'):
+            if kind not in ('game_start', 'game_vision_move', 'game_handwriting', 'reset'):
                 raise ValueError('Real games require visually confirmed moves')
             if kind == 'game_start' and (
                     (game_request.get('mode', 'classic'), game_request['size']) not in VISION_MODES
-                    or game_request.get('input_source') != 'vision'):
+                    or game_request.get('input_source') not in ('vision', 'handwriting')):
                 raise ValueError('Real games require a supported board and camera recognition mode')
         prepared = (prepare_strokes(strokes) if kind == 'draw' else
                     prepare_game_strokes(strokes) if kind == 'game_handwriting' else [])

@@ -292,7 +292,7 @@ async function refresh() {
       perceptionView.value = 'detections';
       get('input-source').value = 'vision';
       get('input-source').querySelector('[value=click]').disabled = true;
-      get('input-source').querySelector('[value=handwriting]').disabled = true;
+      get('input-source').querySelector('[value=handwriting]').disabled = false;
       get('input-source').querySelector('[value=vision]').textContent = 'Robot proxy drawing · Camera confirmation';
       document.querySelectorAll('input[name=size]').forEach(input => {
         if (!['3', 'four'].includes(input.value)) input.closest('label').hidden = true;

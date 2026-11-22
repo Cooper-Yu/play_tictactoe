@@ -17,8 +17,9 @@ def test_real_session_rejects_direct_state_move(tmp_path):
         s.submit('game_start', game_request={'size':3, 'input_source':'click'})
 
 
+@pytest.mark.parametrize("source", ["vision", "handwriting"])
 @pytest.mark.parametrize("size,mode,cell", [(3,"classic",0), (9,"four",8)])
-def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp_path, size, mode, cell):
+def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp_path, size, mode, cell, source):
     world = SimpleNamespace(cells={}, sequence=0, moves=[], detection_sequences=[])
     class Response:
         content = b'camera'
@@ -39,6 +40,7 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
             self.url = url
         def command(self, **kwargs):
             world.moves.append(kwargs['kind'])
+            if kwargs['kind']=='canvas':world.cells[(cell,cell)]=frozenset(('X',))
         def park(self, *args):
             pass
     class Actions:
@@ -76,15 +78,21 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
             time.sleep(.02)
     try:
         wait(lambda:s.status()['state']=='ready')
-        s.submit('game_start', game_request={'size':size,'mode':mode,'input_source':'vision'})
+        s.submit('game_start', game_request={'size':size,'mode':mode,'input_source':source})
         wait(lambda:not s.status()['busy'])
         revision=s.status()['game']['revision']
-        s.submit('game_vision_move', game_request={'row':cell,'col':cell,'revision':revision})
+        if source == 'handwriting':
+            center=(cell+.5)/size;d=.15/size
+            strokes=[[[center-d,center-d],[center+d,center+d]],
+                     [[center+d,center-d],[center-d,center+d]]]
+            s.submit('game_handwriting',strokes,{'revision':revision})
+        else:
+            s.submit('game_vision_move', game_request={'row':cell,'col':cell,'revision':revision})
         wait(lambda:not s.status()['busy'])
         assert s.status()['state']=='ready', s.status()
         assert s.status()['game']['board'][cell][cell]=='X'
         assert sum(mark=='O' for row in s.status()['game']['board'] for mark in row)==1
-        assert world.moves==['reset','O']
+        assert world.moves==(['reset','canvas','O'] if source=='handwriting' else ['reset','O'])
         assert s.status()['vision']['consecutive']==3
     finally:
         s.shutdown.set()
@@ -197,3 +205,12 @@ def test_two_player_bad_setup_cannot_queue_reset(tmp_path, options):
     with pytest.raises(ValueError):
         session.submit("game_start",game_request={"size":3,"input_source":"vision",**options})
     assert session.jobs.empty() and session.status()["job"]==0
+
+
+@pytest.mark.parametrize('width,height',[(.138,.177),(.144,.193)])
+def test_real_handwriting_insets_match_physical_grid(width,height):
+    strokes=[[[0.,0.],[.5,.5],[1.,1.]]]
+    mapped=real_game.real_handwriting_strokes(strokes,width,height)
+    for (u,v),(x,y) in zip(strokes[0],mapped[0]):
+        assert .001+x*(width-.002)==pytest.approx(.002+u*(width-.004))
+        assert .001+y*(height-.002)==pytest.approx(.002+v*(height-.004))

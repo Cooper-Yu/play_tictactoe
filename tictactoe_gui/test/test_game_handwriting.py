@@ -36,10 +36,15 @@ def test_invalid_strokes_rejected_before_motion(tmp_path, strokes):
         s.submit('game_handwriting', strokes, {'revision':4})
     assert s.jobs.empty()
 
-def test_real_handwriting_not_yet_enabled(tmp_path):
+def test_real_handwriting_requires_a_current_camera_turn(tmp_path):
     s=CanvasSession(tmp_path,None,vision_available=True,environment='real')
     s.update(state='ready')
-    with pytest.raises(ValueError):s.submit('game_handwriting',X,{'revision':1})
+    with pytest.raises(RuntimeError):s.submit('game_handwriting',X,{'revision':1})
+    s.update(game=dict(size=3,revision=4,phase='player',input_source='handwriting',
+                       board=[['']*3 for _ in range(3)]))
+    s.submit('game_handwriting',X,{'revision':4})
+    job=s.jobs.get_nowait()
+    assert job['strokes']==X and 'row' not in job['game_request']
 
 @pytest.mark.parametrize('cells', [{(0,0):{'O'}}, {}, {(0,0):{'X'},(0,1):{'X'}}])
 def test_wrong_missing_or_multiple_marks_cannot_change_turn(cells):

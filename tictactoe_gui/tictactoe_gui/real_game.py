@@ -17,6 +17,22 @@ from tictactoe_gui.game_timing import Timeline
 from tictactoe_gui.server import CanvasSession, make_handler
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
 from tictactoe_perception.stable_player_move import StablePlayerMove
+from tictactoe_gui.geometry import validate_strokes, verify_handwriting_cell, verify_handwriting_shape
+
+
+def real_handwriting_strokes(strokes, width, height):
+    """Map game-grid coordinates to the real canvas without rotating or double-insetting.
+
+    The game grid has a 2-mm outer inset; CanvasAction independently reserves
+    1 mm for the pen. Invert that extra inset before handing it the strokes.
+    This transforms geometry only, never supplies a committed row or column.
+    """
+    checked = validate_strokes(strokes)
+    if width <= .004 or height <= .004:
+        raise ValueError('Invalid calibrated board dimensions')
+    return [[[.001/(width-.002)+u*(width-.004)/(width-.002),
+              .001/(height-.002)+v*(height-.004)/(height-.002)]
+             for u,v in stroke] for stroke in checked]
 
 
 def real_game_worker(session, *, url, perception, restore=None):
@@ -166,20 +182,25 @@ def real_game_worker(session, *, url, perception, restore=None):
                     client.park('clear')
                     game.start(request.get('size', 3), job['job'], mode=request.get('mode', 'classic'),
                                first=request.get('first', 'player'),
-                               mark=request.get('mark', 'X'), input_source='vision',
+                               mark=request.get('mark', 'X'), input_source=request.get('input_source', 'vision'),
                                opponent=request.get('opponent', 'ai'))
                     gate_revision = None
                     session.update(vision=None)
-                elif kind == 'game_vision_move':
+                elif kind in ('game_vision_move', 'game_handwriting'):
                     mark = game.active_mark
-                    center = game.game.cell_center(request['row'], request['col'])
                     session.update(message='Drawing the player mark, then waiting for camera confirmation.')
                     timing.emit('player_draw_begin', job=job['job'])
-                    if mark == 'X':
-                        actions.draw_x(center, game.game.cell_size*.55)
+                    if kind == 'game_handwriting':
+                        strokes = real_handwriting_strokes(job['strokes'], actions.width, actions.height)
+                        client.park('clear')
+                        client.command(kind='canvas', strokes=strokes, speed=.45)
                     else:
-                        actions.draw_o(center, game.game.cell_size*.25)
-                    if game.opponent == 'human':
+                        center = game.game.cell_center(request['row'], request['col'])
+                        if mark == 'X':
+                            actions.draw_x(center, game.game.cell_size*.55)
+                        else:
+                            actions.draw_o(center, game.game.cell_size*.25)
+                    if kind == 'game_handwriting' or game.opponent == 'human':
                         client.park('zero')
                     timing.emit('player_draw_complete', job=job['job'])
                     deadline = time.monotonic()+45
@@ -191,6 +212,9 @@ def real_game_worker(session, *, url, perception, restore=None):
                         session.shutdown.wait(.05)
                     if found is None:
                         raise RuntimeError('Camera has not confirmed one unique new mark, Inspect the board before continuing')
+                    if kind == 'game_handwriting':
+                        verify_handwriting_cell(job['strokes'], found, game.game.rows)
+                        verify_handwriting_shape(job['strokes'], game.game.width, game.game.height)
                     register(found, job['job'])
                 else:
                     raise ValueError('Unsupported real game operation')
