@@ -1,6 +1,7 @@
 """Recover only the unstarted suffix of a verified grid stroke sequence."""
 import copy
 import re
+import time
 
 
 def unstarted_grid_tail(strokes, workstation, accepted_job):
@@ -27,3 +28,16 @@ def unstarted_grid_tail(strokes, workstation, accepted_job):
             raise RuntimeError('Completed grid draw needs fresh raised-pen confirmation')
         count += 1
     return copy.deepcopy(strokes[count:]), count
+
+
+def wait_for_lift_terminal(initial, read_status, accepted_job, timeout=5.0):
+    """Observe a stopped lift until its execution thread has released ownership."""
+    state = initial
+    deadline = time.monotonic()+timeout
+    while (state.get('job') == accepted_job
+            and re.fullmatch(r'\d+_lift', (state.get('drawing_progress') or {}).get('stage', ''))
+            and (state.get('busy') or not state.get('fresh'))
+            and time.monotonic() < deadline):
+        time.sleep(.1)
+        state = read_status()
+    return state

@@ -82,3 +82,10 @@ Completed-line counts accumulate across repeated resumes.
 3 linter tests deselected. Added cases cover raised lift, low/stale/active state,
 segmentation, nonfinite height, stage numbering and the final-line suffix.
 Runtime verification of this exact lift extension is recorded separately.
+The first controlled real lifted-stop test exposed a terminal-state race: the
+game worker inspected the checkpoint while the motion worker was still busy.
+The checkpoint collector now performs read-only observation for at most 5 s,
+only for the same job and exact numeric lift stage. It sends no new motion or
+recovery acknowledgement. A changed job/stage or expired budget still fails
+closed. Four additional tests cover the race and its bounded rejection paths;
+245 local functional tests passed, with 3 linter tests deselected.

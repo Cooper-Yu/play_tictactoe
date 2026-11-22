@@ -58,3 +58,24 @@ def test_last_verified_lift_needs_no_new_canvas_request():
 
 def test_stage_number_must_match_recorded_source_stroke():
     with pytest.raises(RuntimeError):unstarted_grid_tail([[]]*4,state(stage='99_lower'),6)
+
+
+def test_lift_waits_for_worker_terminal_without_sending_motion(monkeypatch):
+    from tictactoe_gui.grid_recovery import wait_for_lift_terminal
+    monkeypatch.setattr('tictactoe_gui.grid_recovery.time.sleep',lambda _:None)
+    initial=state(stage='3_lift',total_parts=4)
+    initial.update(busy=True,fresh=True,pose={'z':.211})
+    final=dict(initial,busy=False)
+    reads=[]
+    observed=wait_for_lift_terminal(initial,lambda:reads.append(True) or final,6)
+    assert reads==[True] and unstarted_grid_tail([[]]*4,observed,6)==([[]],3)
+
+
+@pytest.mark.parametrize('case',['another_job','draw','timeout'])
+def test_lift_wait_never_follows_another_job_or_waits_without_bound(case):
+    from tictactoe_gui.grid_recovery import wait_for_lift_terminal
+    initial=state(stage='3_lift');initial.update(busy=True,fresh=True)
+    if case=='another_job':initial['job']=7
+    if case=='draw':initial['drawing_progress']['stage']='3_draw'
+    result=wait_for_lift_terminal(initial,lambda:pytest.fail('No read is needed'),6,timeout=0 if case=='timeout' else 5)
+    assert result is initial

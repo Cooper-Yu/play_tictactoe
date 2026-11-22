@@ -14,7 +14,7 @@ import requests
 from tictactoe_coordinator.game_coordinator import GameCoordinator
 from tictactoe_gui.real_board_perception import RealBoardPerception
 from tictactoe_gui.game_timing import Timeline
-from tictactoe_gui.grid_recovery import unstarted_grid_tail
+from tictactoe_gui.grid_recovery import unstarted_grid_tail, wait_for_lift_terminal
 from tictactoe_gui.server import CanvasSession, make_handler
 from tictactoe_gui.workstation_client import Workstation, RemoteDrawing, draw_canvas_with_feedback_recovery
 from tictactoe_perception.stable_player_move import StablePlayerMove
@@ -298,6 +298,8 @@ def real_game_worker(session, *, url, perception, restore=None):
                         paths = (pending_turn['remaining_strokes'] if pending_turn else
                             actions.grid_strokes(game.game.center, game.game.width, game.game.height,
                                                  game.game.rows, game.game.columns))
+                        actual = wait_for_lift_terminal(actual,
+                            lambda: client.get('status', timeout=1), client.last_command_job)
                         tail, completed = unstarted_grid_tail(paths, actual, client.last_command_job)
                         completed += pending_turn.get('completed_grid_strokes', 0) if pending_turn else 0
                         pending_turn = dict(kind='grid', original_job=job['job'], stage='grid_remaining',
