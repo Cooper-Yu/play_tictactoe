@@ -11,6 +11,7 @@ class ResetAction:
     cancellation stops the sequence; no automatic retreat follows a stop request.
     """
     _ALIGNMENT_TOLERANCE_M = .0005
+    _PRELIFT_EPSILON_M = .00001
     _MAX_REAL_OFFSET_M = .003
 
     def __init__(self, driver, progress=None):
@@ -76,7 +77,9 @@ class ResetAction:
                                     hover_position['y'] - press_position['y']) > self._ALIGNMENT_TOLERANCE_M
         d.parameters(velocity_scaling=speed, acceleration_scaling=speed)
         current = d.current_pose()
-        if current.position.z < hover_z:
+        # TF rounding near the hover height must not request a sub-resolution
+        # Cartesian trajectory. The recorded hover is still planned and verified.
+        if current.position.z < hover_z - self._PRELIFT_EPSILON_M:
             self._stage('Raise to clearance height first')
             target = copy.deepcopy(current.position)
             target.z = hover_z

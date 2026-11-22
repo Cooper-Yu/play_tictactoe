@@ -141,3 +141,19 @@ def test_direct_reset_uses_only_full_speed_button_legs():
     assert legs == [(.2069714381, 1.0, True), (.216, 1.0, True)]
     assert result['direct_native'] is True
     assert driver.node.cartesian_planner.canvas_native_timing is False
+
+
+@pytest.mark.parametrize('gap', [0., 3.352890250440943e-7, 5e-6])
+def test_reset_skips_sub_resolution_prelift(gap):
+    driver = Driver(.214-gap)
+    ResetAction(driver).run()
+    targets = [p.z for k, p in driver.calls if k == 'linear']
+    assert targets == [.208, .214]
+    assert ('call', 'plan_return') in driver.calls
+
+
+def test_reset_still_lifts_when_clearance_gap_is_measurable():
+    driver = Driver(.214-.0001)
+    ResetAction(driver).run()
+    targets = [p.z for k, p in driver.calls if k == 'linear']
+    assert targets == [.214, .208, .214]
