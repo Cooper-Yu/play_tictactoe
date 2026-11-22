@@ -205,6 +205,35 @@ class Workstation:
         path.write_bytes(response.content)
         return path, state['camera']['sequence']
 
+def draw_canvas_with_feedback_recovery(client, strokes, speed=.45):
+    """Replan once only when feedback stopped the initial suspended approach."""
+    try:
+        return client.command(kind='canvas', strokes=strokes, speed=speed)
+    except RuntimeError:
+        state = client.get('status', timeout=3)
+        incident = state.get('last_stop') or {}
+        progress = state.get('drawing_progress') or {}
+        pose = state.get('pose') or {}
+        if (incident.get('source') != 'feedback_guard'
+                or incident.get('job') != getattr(client, 'last_command_job', None)
+                or state.get('job') != client.last_command_job
+                or progress.get('source_stroke') != 1
+                or progress.get('completed_input_strokes') != 0
+                or progress.get('completed_parts') != 0
+                or progress.get('total_input_strokes') != len(strokes)
+                or progress.get('stage') not in
+                    ('raise_before_transfer', 'approach', 'approach_hover', '1_transfer')
+                or pose.get('z', 0) < .2109):
+            raise
+        recovered = client.recover_feedback()
+        if not recovered.get('pose') or recovered['pose']['z'] < .2109:
+            raise RuntimeError('Recovered approach is below clearance; inspect the pen')
+        client.diagnostic('canvas_replanned_before_contact', recovered)
+        # Fresh geometry planning, after terminal execution and stable feedback.
+        # A second failure propagates; partially written strokes are never retried.
+        return client.command(kind='canvas', strokes=strokes, speed=speed)
+
+
 class RemoteDrawing:
     """Compose existing drawing geometry with the real workstation execution queue."""
     def __init__(self, client):
@@ -229,7 +258,7 @@ class RemoteDrawing:
 
     def draw(self, strokes, **options):
         self.client.park('clear')
-        self.client.command(kind='canvas', strokes=strokes, speed=.45)
+        draw_canvas_with_feedback_recovery(self.client, strokes, speed=.45)
         self.client.park('zero')
         return {'passed': True}
 

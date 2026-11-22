@@ -51,3 +51,19 @@ exact-job confirmation, low-clearance rejection and refusal to reuse an old stop
 Native headless Chrome tests passed for inspected resume, handwriting, two-player
 controls and page suspension/no replay. These are local tests; real recovery
 evidence must be recorded separately.
+
+## Initial suspended approach recovery
+
+A feedback-only interruption before the first input stroke has begun can replan
+once automatically. The accepted job must match, input/part completion must be
+zero, and the recorded stage and actual pose must show suspended clearance of
+at least 211 mm. Existing terminal-action and stationary-feedback confirmation
+is still required. The replacement command plans fresh geometry; it does not
+resume an old trajectory. Contact, partial ink, caller stops, another job, and
+unknown HTTP submission outcomes are not retried automatically.
+
+2026-11-22 local functional regression: 233 passed, 3 linter tests deselected.
+The seven added cases verify eligible initial approach, contact/partial progress,
+caller stop, job mismatch, and refusal to retry an unknown transport outcome.
+Real evidence for this automatic path is recorded separately from the successful
+inspected player-turn and remaining-grid-strokes recovery tests.

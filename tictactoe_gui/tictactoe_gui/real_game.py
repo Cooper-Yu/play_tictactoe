@@ -16,7 +16,7 @@ from tictactoe_gui.real_board_perception import RealBoardPerception
 from tictactoe_gui.game_timing import Timeline
 from tictactoe_gui.grid_recovery import unstarted_grid_tail
 from tictactoe_gui.server import CanvasSession, make_handler
-from tictactoe_gui.workstation_client import Workstation, RemoteDrawing
+from tictactoe_gui.workstation_client import Workstation, RemoteDrawing, draw_canvas_with_feedback_recovery
 from tictactoe_perception.stable_player_move import StablePlayerMove
 from tictactoe_gui.geometry import validate_strokes, verify_handwriting_cell, verify_handwriting_shape
 
@@ -256,7 +256,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                         strokes = real_handwriting_strokes(job['strokes'], actions.width, actions.height)
                         client.park('clear')
                         checkpoint('drawing')
-                        client.command(kind='canvas', strokes=strokes, speed=.45)
+                        draw_canvas_with_feedback_recovery(client, strokes, speed=.45)
                     else:
                         checkpoint('drawing')
                         center = game.game.cell_center(request['row'], request['col'])
