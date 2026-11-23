@@ -117,52 +117,66 @@ label { min-width: 120px; }
   .tablet { width: min(85%, 290px, 43vh); }
 }
 
-/* Keep observation surfaces beside the board, with controls below them. */
+/* Observation tools retain their own controls without changing the page grid. */
 .perception summary { font-weight: 650; cursor: pointer; }
-.perception label { justify-content: space-between; margin-top: 12px; }
+.perception label { justify-content: space-between; margin-top: 12px; min-width: 0; }
 .perception select { font: inherit; color: inherit; max-width: 58%; }
-.perception .preview { aspect-ratio: 140/189; max-height: 47vh; background: #14262e; }
-.perception .preview img { height: 100%; max-height: 47vh; }
+.perception .preview { aspect-ratio: 140/189; max-height: 38vh; margin-left: auto; margin-right: auto; background: #14262e; }
+.perception .preview img { height: 100%; max-height: 38vh; }
 .perception .preview > * { grid-area: 1 / 1; }
 .perception .preview p { margin: 10px; padding: 5px 8px; background: #14262e; text-align: center; }
 .perception > p { margin: 10px 0 0; color: #496570; font-size: 13px; }
-@media (min-width: 1080px) {
-  main:has(.perception[open]) {
-    width: min(1440px, calc(100% - 40px));
-    grid-template-columns: minmax(310px, .85fr) minmax(0, 1.65fr);
-  }
-  main:has(.perception[open]) .game-sidebar {
-    grid-template-columns: minmax(0, 1.1fr) minmax(200px, .9fr);
-    align-items: start;
-  }
-  main:has(.perception[open]) .controls { grid-column: 1 / -1; }
-}
-
-@media (max-width: 690px) {
-  .camera, .play, .perception, .controls { grid-column: 1; }
-  .play { grid-row: 2; }
-  .perception { grid-row: 3; }
-}
-
-.game-options label[hidden] { display: none; }
-
-.controls label[hidden] { display: none; }
+.game-options label[hidden], .controls label[hidden] { display: none; }
 #vision-status { color: #096d70; }
 
-@media (min-width: 960px) {
-  body[data-environment="real"] main:has(.perception[open]) {
-    width: min(1540px, calc(100% - 32px));
-    grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.1fr) minmax(220px, .9fr);
-    gap: 16px;
-  }
-  body[data-environment="real"] main:has(.perception[open]) .game-sidebar { display: contents; }
-  body[data-environment="real"] .play { grid-column: 1; grid-row: 1; }
-  body[data-environment="real"] .camera:not(.perception) { grid-column: 2; grid-row: 1; }
-  body[data-environment="real"] .perception { grid-column: 3; grid-row: 1; }
-  body[data-environment="real"] main:has(.perception[open]) .controls { grid-column: 1 / -1; grid-row: 2; }
-  body[data-environment="real"] .tablet { width: min(100%, 340px, 44vh); }
-  body[data-environment="real"] .perception .preview,
-  body[data-environment="real"] .perception .preview img { max-height: 55vh; }
+/* Three stable work areas: board, observation, game commands. */
+header { padding: 18px max(24px, calc((100% - 1560px)/2)); }
+main { width: min(1560px, calc(100% - 48px)); gap: 20px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(300px, .85fr); }
+.game-sidebar { display: contents; }
+.play, .controls, .camera { min-width: 0; padding: 22px; }
+.play { grid-column: 1; grid-row: 1 / span 3; }
+.camera:not(.perception) { grid-column: 2; grid-row: 1; }
+.perception { grid-column: 2; grid-row: 2 / span 2; }
+.controls[aria-label="Game settings"] { grid-column: 3; grid-row: 1 / span 2; }
+.points { grid-column: 3; grid-row: 3; }
+.panel-label { margin: 0 0 8px; color: #64818b; font-size: 11px;
+  font-weight: 650; letter-spacing: .12em; text-transform: uppercase; }
+.controls > h2 { margin-bottom: 20px; }
+.board-heading { flex-wrap: wrap; }
+.tablet { width: min(100%, 390px); margin-top: 22px; }
+.camera:not(.perception) .preview { aspect-ratio: 16/10; }
+.camera:not(.perception) .preview img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+.controls fieldset { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.controls fieldset label { min-width: 0; padding: 10px 12px; background: #f8fbfc; }
+.controls fieldset label:has(input:checked) { border-color: #219296; background: #e9f5f3; }
+.game-options { grid-template-columns: 1fr 1fr; }
+#input-option, #opponent-option { grid-column: 1 / -1; }
+.game-options select { width: 100%; min-width: 0; max-width: 100%; }
+.controls .start { margin-top: 18px; }
+.controls .quiet { margin-top: 10px; }
+#status { padding-top: 16px; border-top: 1px solid #e3ebed; line-height: 1.6; }
+@media (max-width: 1100px) and (min-width: 701px) {
+  main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .play { grid-column: 1; grid-row: 1 / span 2; }
+  .camera:not(.perception) { grid-column: 2; grid-row: 1; }
+  .perception { grid-column: 2; grid-row: 2; }
+  .controls[aria-label="Game settings"] { grid-column: 1 / -1; grid-row: 3; }
+  .controls fieldset { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .points { grid-column: 1 / -1; grid-row: 4; }
+}
+@media (max-width: 700px) {
+  header { padding: 16px; gap: 10px; } h1 { font-size: 21px; }
+  #connection { margin-left: 0; width: 100%; }
+  main { width: calc(100% - 24px); margin: 12px auto; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .play, .controls, .camera { padding: 16px; grid-column: 1; }
+  .camera:not(.perception) { grid-column: 1; grid-row: 1; }
+  .play { grid-row: 2; }
+  .controls[aria-label="Game settings"] { grid-column: 1; grid-row: 3; }
+  .points { grid-column: 1; grid-row: 4; }
+  .perception { grid-column: 1; grid-row: 5; }
+  .tablet { width: min(100%, 340px); }
+  .camera:not(.perception) .preview { aspect-ratio: 16/9; }
 }
 
 .camera-switch { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 12px 0; font-size: 14px; }

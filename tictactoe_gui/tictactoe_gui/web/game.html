@@ -11,6 +11,7 @@
   <header><h1>Robot board games</h1><a id="canvas-link" href="/">Back to canvas</a><span id="connection">Connecting Gazebo</span></header>
   <main>
     <section class="play" aria-label="Game board">
+      <p class="panel-label">Play</p>
       <div class="board-heading"><h2 id="heading">Tic-Tac-Toe</h2><span id="roles">You play X · AI plays O</span></div>
       <div class="tablet"><div class="board-wrap"><div id="board" class="board" aria-label="Board"></div><canvas id="handwriting" aria-label="Handwrite a mark on the board" hidden></canvas><span id="win-line" class="win-line" aria-hidden="true" hidden></span></div></div>
       <div id="handwriting-controls" hidden>
@@ -25,6 +26,7 @@
     </section>
     <aside class="game-sidebar">
       <section class="camera">
+        <p class="panel-label">Observation</p>
         <div class="camera-heading"><h2 id="camera-heading">Simulation camera</h2><button id="stop" class="stop" disabled>Stop motion</button></div>
         <div class="camera-switch" role="group" aria-label="Camera display"><span>Camera</span><label class="toggle"><input id="camera-detection" type="checkbox" aria-label="Show YOLO detections"><span aria-hidden="true"></span></label><span>Detection</span></div><div id="preview" class="preview"><p>Waiting for Gazebo Camera image</p><img id="image" alt="Gazebo tablet and robot arm" hidden></div>
       </section>
@@ -43,6 +45,8 @@
         <p id="vision-status" aria-live="polite"></p><p id="perception-caption">Perspective correction using the current simulation board calibration.</p>
       </details>
       <section class="controls" aria-label="Game settings">
+        <p class="panel-label">Game setup</p>
+        <h2>Game controls</h2>
         <fieldset>
           <legend>Game mode</legend>
           <label><input type="radio" name="size" value="3" checked><span>Tic-Tac-Toe <small>3 × 3 · Minimax</small></span></label>
