@@ -287,7 +287,10 @@ def workbench_worker(session):
             from tictactoe_gui.canvas_action import CanvasAction
             if real_canvas is None or command['speed'] > real_canvas.profile['max_velocity_scaling']:
                 raise ValueError('Real canvas calibration or speed does not match the profile')
-            action = CanvasAction(real_canvas, command['strokes'])
+            canvas = real_canvas
+            if command.get('direct_from_zero'):
+                canvas = BoardCanvas(dict(real_canvas.profile, allow_direct_zero_approach=True))
+            action = CanvasAction(canvas, command['strokes'])
             driver.node.invalidate_plan()
             session.update(plan=None, drawing_result=None, drawing_progress=None)
             driver.parameters(velocity_scaling=command['speed'], acceleration_scaling=command['speed'])

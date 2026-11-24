@@ -35,8 +35,12 @@ def test_inspected_resume_preserves_turn_and_never_replays_canvas(monkeypatch, t
             return dict(state='ready', busy=False, fresh=True, pose={'z': .216}, job=2)
     class Actions:
         width, height = .144, .193
-        def __init__(self, client): self.client = client
-        def prepare_draw(self): self.client.park('clear')
+        def __init__(self, client, *, direct_from_zero):
+            assert direct_from_zero
+            self.client = client
+        def prepare_draw(self): pass
+        def run_canvas(self, strokes):
+            return self.client.command(kind='canvas', strokes=strokes, direct_from_zero=True)
         def grid_strokes(self, *args): pass
         x_strokes = o_strokes = grid_strokes
         def draw_grid(self, *args, **kwargs): return {'passed': True}

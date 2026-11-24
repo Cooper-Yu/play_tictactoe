@@ -40,15 +40,20 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
             self.url = url
         def command(self, **kwargs):
             world.moves.append(kwargs['kind'])
-            if kwargs['kind']=='canvas':world.cells[(cell,cell)]=frozenset(('X',))
+            if kwargs['kind'] == 'canvas':
+                assert kwargs['direct_from_zero'] is True
+                world.cells[(cell, cell)] = frozenset(('X',))
         def park(self, *args):
             pass
     class Actions:
         width, height = .144, .193
-        def __init__(self, client):
-            pass
+        def __init__(self, client, *, direct_from_zero):
+            assert direct_from_zero
+            self.client = client
         def prepare_draw(self):
             world.moves.append('prepare_draw')
+        def run_canvas(self, strokes):
+            return self.client.command(kind='canvas', strokes=strokes, direct_from_zero=True)
         def grid_strokes(self, *args):
             pass
         x_strokes = o_strokes = grid_strokes
@@ -150,7 +155,8 @@ def test_two_players_real_worker_confirms_each_turn_without_ai(monkeypatch, tmp_
         def park(self,name): world.parks.append(name)
     class Actions:
         width,height=.144,.193
-        def __init__(self,client): pass
+        def __init__(self, client, *, direct_from_zero):
+            assert direct_from_zero
         def grid_strokes(self,*args): pass
         x_strokes=o_strokes=grid_strokes
         def draw_grid(self,*args,**kwargs): return {"passed":True}

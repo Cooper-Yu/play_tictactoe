@@ -205,10 +205,13 @@ class Workstation:
         path.write_bytes(response.content)
         return path, state['camera']['sequence']
 
-def draw_canvas_with_feedback_recovery(client, strokes, speed=.45):
+def draw_canvas_with_feedback_recovery(client, strokes, speed=.45, *, direct_from_zero=False):
     """Replan once only when feedback stopped the initial suspended approach."""
+    command = dict(kind='canvas', strokes=strokes, speed=speed)
+    if direct_from_zero:
+        command['direct_from_zero'] = True
     try:
-        return client.command(kind='canvas', strokes=strokes, speed=speed)
+        return client.command(**command)
     except RuntimeError:
         state = client.get('status', timeout=3)
         incident = state.get('last_stop') or {}
@@ -231,12 +234,12 @@ def draw_canvas_with_feedback_recovery(client, strokes, speed=.45):
         client.diagnostic('canvas_replanned_before_contact', recovered)
         # Fresh geometry planning, after terminal execution and stable feedback.
         # A second failure propagates; partially written strokes are never retried.
-        return client.command(kind='canvas', strokes=strokes, speed=speed)
+        return client.command(**command)
 
 
 class RemoteDrawing:
     """Compose existing drawing geometry with the real workstation execution queue."""
-    def __init__(self, client):
+    def __init__(self, client, *, direct_from_zero=False):
         import yaml
         from tictactoe_motion.canvas.board_canvas import BoardCanvas
         from tictactoe_motion.actions.drawing_actions import DrawingActions
@@ -246,6 +249,7 @@ class RemoteDrawing:
             (root/'config/board_real.yaml').read_text())))
         self.width, self.height = self.geometry.width, self.geometry.height
         self.client = client
+        self.direct_from_zero = direct_from_zero
 
     def grid_strokes(self, *args, **kwargs):
         return self.geometry.grid_strokes(*args, **kwargs)
@@ -258,12 +262,19 @@ class RemoteDrawing:
 
     def prepare_draw(self):
         """Use the workstation's direct approach when the real profile enables it."""
-        if not self.geometry.canvas.profile.get('allow_direct_zero_approach', False):
+        if not (self.direct_from_zero
+                or self.geometry.canvas.profile.get('allow_direct_zero_approach', False)):
             self.client.park('clear')
+
+    def run_canvas(self, strokes):
+        """Draw through the workbench using the configured approach."""
+        return draw_canvas_with_feedback_recovery(
+            self.client, strokes, speed=.45, direct_from_zero=self.direct_from_zero,
+        )
 
     def draw(self, strokes, **options):
         self.prepare_draw()
-        draw_canvas_with_feedback_recovery(self.client, strokes, speed=.45)
+        self.run_canvas(strokes)
         self.client.park('zero')
         return {'passed': True}
 

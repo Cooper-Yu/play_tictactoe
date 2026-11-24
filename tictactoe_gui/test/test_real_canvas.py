@@ -117,6 +117,14 @@ def test_shared_canvas_http_large_payload_and_auth(tmp_path,gateway):
 def test_canvas_rejects_invalid_input(data):
     with pytest.raises(ValueError):validate_command(dict(data,kind='canvas'),'real')
 
+
+def test_real_canvas_can_select_direct_approach_per_command():
+    draw = dict(kind='canvas', strokes=[[[0, 0], [1, 1]]])
+    assert 'direct_from_zero' not in validate_command(draw, 'real')
+    assert validate_command(dict(draw, direct_from_zero=True), 'real')['direct_from_zero'] is True
+    with pytest.raises(ValueError, match='must be a boolean'):
+        validate_command(dict(draw, direct_from_zero='true'), 'real')
+
 @pytest.mark.parametrize('length,candidate', [(.085, True), (.120, True), (.130, True)])
 def test_long_straight_source_preserves_segmented_fallback(length, candidate):
     canvas = board()

@@ -87,6 +87,11 @@ def validate_command(data, environment='sim'):
         from tictactoe_gui.geometry import validate_strokes
         if environment != 'real':
             raise ValueError('This canvas uses real-board calibration; Use the simulation canvas for simulation')
+        direct = data.get('direct_from_zero', False)
+        if not isinstance(direct, bool):
+            raise ValueError('direct_from_zero must be a boolean')
+        if direct:
+            result['direct_from_zero'] = True
         result['strokes'] = validate_strokes(data.get('strokes'))
     if kind == 'draw':
         if environment != 'real':
