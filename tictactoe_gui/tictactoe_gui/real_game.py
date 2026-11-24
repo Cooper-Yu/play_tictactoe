@@ -255,7 +255,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                     timing.emit('player_draw_begin', job=job['job'])
                     if kind == 'game_handwriting':
                         strokes = real_handwriting_strokes(job['strokes'], actions.width, actions.height)
-                        client.park('clear')
+                        actions.prepare_draw()
                         checkpoint('drawing')
                         draw_canvas_with_feedback_recovery(client, strokes, speed=.45)
                     else:

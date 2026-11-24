@@ -47,6 +47,8 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
         width, height = .144, .193
         def __init__(self, client):
             pass
+        def prepare_draw(self):
+            world.moves.append('prepare_draw')
         def grid_strokes(self, *args):
             pass
         x_strokes = o_strokes = grid_strokes
@@ -92,7 +94,8 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
         assert s.status()['state']=='ready', s.status()
         assert s.status()['game']['board'][cell][cell]=='X'
         assert sum(mark=='O' for row in s.status()['game']['board'] for mark in row)==1
-        assert world.moves==(['reset','canvas','O'] if source=='handwriting' else ['reset','O'])
+        expected = ['reset', 'prepare_draw', 'canvas', 'O'] if source == 'handwriting' else ['reset', 'O']
+        assert world.moves == expected
         assert s.status()['vision']['consecutive']==3
     finally:
         s.shutdown.set()

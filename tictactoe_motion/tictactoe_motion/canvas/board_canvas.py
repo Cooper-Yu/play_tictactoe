@@ -23,6 +23,8 @@ class BoardCanvas:
         self.x0 = min(c[0] for c in corners); self.x1 = max(c[0] for c in corners)
         self.y0 = min(c[1] for c in corners); self.y1 = max(c[1] for c in corners)
         if self.real_axes:
+            if not isinstance(profile.get('allow_direct_zero_approach', False), bool):
+                raise ValueError('allow_direct_zero_approach must be a boolean')
             expected = [[self.x1,self.y0,self.z],[self.x0,self.y0,self.z],
                         [self.x0,self.y1,self.z],[self.x1,self.y1,self.z]]
             orientation = profile.get('required_orientation_xyzw', [])

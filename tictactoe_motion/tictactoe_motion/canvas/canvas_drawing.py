@@ -51,6 +51,9 @@ class CanvasDrawing(StrokeDrawing):
             # Only the contact path uses the requested drawing scaling.
             if name.endswith('_draw'):
                 scaling = requested
+            elif name == 'approach_from_zero':
+                value = min(.1, self.canvas.profile.get('travel_velocity_scaling', 1.0))
+                scaling = dict(velocity_scaling=value, acceleration_scaling=value)
             else:
                 key = ('pen_vertical_velocity_scaling'
                        if name.endswith(('_lower', '_lift')) and name != 'exit_lift'
@@ -108,6 +111,50 @@ class CanvasDrawing(StrokeDrawing):
                 raise RuntimeError('Canvas approach segment failed verification')
         return dict(result, approach_segments=count)
 
+    def _drawing_orientation_matches(self, orientation):
+        actual = [orientation.x, orientation.y, orientation.z, orientation.w]
+        norm = math.sqrt(sum(value * value for value in actual))
+        if not math.isfinite(norm) or abs(norm - 1) > .001:
+            raise ValueError('Invalid current drawing orientation')
+        expected = self.canvas.profile['required_orientation_xyzw']
+        dot = abs(sum(a * b for a, b in zip(actual, expected))) / norm
+        error = 2 * math.acos(min(1., dot))
+        return error <= self.canvas.profile['orientation_tolerance_rad']
+
+    def _approach_from_zero(self, driver, upper, clearance, cancelled, on_stage):
+        if not self.canvas.profile.get('allow_direct_zero_approach', False):
+            raise ValueError('Move to clear drawing orientation before drawing')
+        zero, _ = driver.named_target('zero')
+        if not driver.node.feedback_is_fresh():
+            raise RuntimeError('Fresh joint feedback required for direct drawing approach')
+        state = driver.node.current_joint_state
+        measured = dict(zip(state.name, state.position))
+        if not all(abs(measured.get(name, math.inf) - angle) <= .03
+                   for name, angle in zero.items()):
+            raise ValueError('Start at zero or move to clear drawing orientation')
+        if cancelled():
+            raise RuntimeError('Drawing cancelled before direct approach')
+        target = copy.deepcopy(upper)
+        target.position.x, target.position.y, _ = self.paths[0][0]
+        target.position.z = clearance + .005
+        (target.orientation.x, target.orientation.y, target.orientation.z,
+         target.orientation.w) = self.canvas.profile['required_orientation_xyzw']
+        on_stage('approach_from_zero')
+        result = driver.pose(target)
+        if not isinstance(result, dict) or result.get('passed') is not True:
+            raise RuntimeError('Direct drawing approach failed')
+        upper = driver.current_pose()
+        point = upper.position
+        error = math.dist(
+            (point.x, point.y, point.z),
+            (target.position.x, target.position.y, target.position.z),
+        )
+        if not (point.z >= clearance and error <= .001
+                and self._drawing_orientation_matches(upper.orientation)):
+            raise RuntimeError('Direct approach did not reach the verified drawing hover pose')
+        self.results.append({'stage': 'approach_from_zero', 'result': copy.deepcopy(result)})
+        return upper
+
     def _run(self, driver, cancelled, on_stage):
         self.results=[]
         if cancelled():raise RuntimeError('Drawing cancelled')
@@ -115,16 +162,9 @@ class CanvasDrawing(StrokeDrawing):
         if self.canvas.environment == 'real':
             if getattr(getattr(driver, 'recording', None), 'environment', None) != 'real':
                 raise ValueError('Real canvas requires a real motion driver')
-            q = upper.orientation
-            actual = [q.x, q.y, q.z, q.w]
-            expected = self.canvas.profile['required_orientation_xyzw']
-            norm = math.sqrt(sum(v*v for v in actual))
-            if not math.isfinite(norm) or abs(norm-1) > .001:
-                raise ValueError('Invalid current drawing orientation')
-            error = 2*math.acos(min(1., abs(sum(a*b for a,b in zip(actual,expected))/norm)))
-            if error > self.canvas.profile['orientation_tolerance_rad']:
-                raise ValueError('Move to clear drawing orientation before drawing')
             clearance = self.transfer_z or self.upper_z
+            if not self._drawing_orientation_matches(upper.orientation):
+                upper = self._approach_from_zero(driver, upper, clearance, cancelled, on_stage)
             if upper.position.z < clearance-0.0001:
                 on_stage('raise_before_transfer')
                 lift = copy.deepcopy(upper.position); lift.z = clearance

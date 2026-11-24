@@ -183,6 +183,10 @@ replayed automatically after a timeout or connection loss.
   footprint margin. Screen right maps to base -X and down to +Y.
 - Drawing Z206 mm, hover Z216 mm and the clear orientation come from
   `board_real.yaml`. Drawing scaling is selectable from 5% to 100% in 5% increments. The default is 10%.
+- `allow_direct_zero_approach` enables a MoveIt plan from the measured `zero`
+  preset to an elevated start pose with the drawing orientation. The arm checks
+  the achieved pose before lowering. Enable this only after verifying full-path
+  clearance for the installed pen, fixture and board.
 - Up to 32 source strokes / 8000 points; geometry is checked before any motion.
   Long strokes (>60 mm), dense paths or sharp reversals are lifted and split
   while preserving the source order. The backend does not smooth the drawing.

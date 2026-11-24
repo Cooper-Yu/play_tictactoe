@@ -2,7 +2,24 @@
 from types import SimpleNamespace
 import pytest
 import requests
-from tictactoe_gui.workstation_client import draw_canvas_with_feedback_recovery
+from tictactoe_gui.workstation_client import RemoteDrawing, draw_canvas_with_feedback_recovery
+
+
+@pytest.mark.parametrize('direct', [False, True])
+def test_remote_drawing_parks_at_clear_only_for_legacy_approach(direct):
+    drawing = RemoteDrawing.__new__(RemoteDrawing)
+    calls = []
+    drawing.geometry = SimpleNamespace(
+        canvas=SimpleNamespace(profile={'allow_direct_zero_approach': direct}),
+    )
+    drawing.client = SimpleNamespace(
+        park=lambda name: calls.append(name),
+        command=lambda **kwargs: calls.append(kwargs['kind']),
+    )
+
+    drawing.draw([[[0, 0], [1, 1]]])
+
+    assert calls == (['canvas', 'zero'] if direct else ['clear', 'canvas', 'zero'])
 
 
 def make_client(state):

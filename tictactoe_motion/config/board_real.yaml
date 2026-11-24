@@ -16,6 +16,8 @@ transfer_link6_z_m: 0.216
 # link6 reference; not a calibrated physical pen TCP.
 required_orientation_xyzw: [0.0, 1.0, 0.0, 0.0]
 orientation_tolerance_rad: 0.03
+# Enable only after checking the full approach with the mounted pen and board.
+allow_direct_zero_approach: false
 max_velocity_scaling: 1.0
 # Contact paths use the requested drawing scaling (GUI default 45%).
 # Retain the tested full-speed pen motion and elevated transfers.

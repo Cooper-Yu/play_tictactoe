@@ -256,8 +256,13 @@ class RemoteDrawing:
     def o_strokes(self, *args, **kwargs):
         return self.geometry.o_strokes(*args, **kwargs)
 
+    def prepare_draw(self):
+        """Use the workstation's direct approach when the real profile enables it."""
+        if not self.geometry.canvas.profile.get('allow_direct_zero_approach', False):
+            self.client.park('clear')
+
     def draw(self, strokes, **options):
-        self.client.park('clear')
+        self.prepare_draw()
         draw_canvas_with_feedback_recovery(self.client, strokes, speed=.45)
         self.client.park('zero')
         return {'passed': True}

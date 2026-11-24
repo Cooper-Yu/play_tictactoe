@@ -75,10 +75,78 @@ def test_wrong_driver_orientation_height_or_cancel_produces_no_motion():
     with pytest.raises(ValueError): DrawingActions(BoardCanvas(profile()),upper_z=.22,depth=.01).x_strokes()
 
 
+def direct_zero_fixture():
+    p = profile()
+    p['allow_direct_zero_approach'] = True
+    d = real_driver()
+    d.actual.orientation.y = 0.
+    d.actual.orientation.w = 1.
+    d.actual.position.z = .3
+    names = [f'joint{i}' for i in range(1, 7)]
+    d.node.feedback_is_fresh = lambda: True
+    d.node.current_joint_state = SimpleNamespace(name=names, position=[0.] * len(names))
+    d.named_target = lambda name: (dict.fromkeys(names, 0.), None)
+
+    def pose(target):
+        d.calls.append(('pose', copy.deepcopy(target)))
+        d.actual = copy.deepcopy(target)
+        return {'passed': True}
+
+    d.pose = pose
+    return DrawingActions(BoardCanvas(p), d), d
+
+
+def test_direct_zero_approach_sets_pose_over_first_stroke_before_lowering():
+    a, d = direct_zero_fixture()
+    first = a.canvas.metric_point(*a.x_strokes()[0][0])
+    approach_speed = []
+
+    def observe(stage):
+        if stage == 'approach_from_zero':
+            approach_speed.append(d.scaling['velocity_scaling'])
+
+    a.draw_x(on_stage=observe)
+    kind, target = d.calls[0]
+    assert kind == 'pose'
+    assert (target.position.x, target.position.y, target.position.z) == pytest.approx(
+        (first[0], first[1], .221))
+    assert target.orientation.y == 1.
+    assert approach_speed == [.1]
+    assert [kind for kind, _ in d.calls[:4]] == ['pose', 'linear', 'linear', 'path']
+    assert [pose.position.z for _, pose in d.calls[1:3]] == pytest.approx([.216, .206])
+
+
+@pytest.mark.parametrize('problem', ['stale', 'not_zero', 'rejected', 'low', 'wrong_angle'])
+def test_direct_zero_approach_failure_never_lowers(problem):
+    a, d = direct_zero_fixture()
+    original_pose = d.pose
+
+    def pose(target):
+        result = original_pose(target)
+        if problem == 'rejected':
+            return {'passed': False}
+        if problem == 'low':
+            d.actual.position.z = .21
+        if problem == 'wrong_angle':
+            d.actual.orientation.y, d.actual.orientation.w = 0., 1.
+        return result
+
+    d.pose = pose
+    if problem == 'stale':
+        d.node.feedback_is_fresh = lambda: False
+    if problem == 'not_zero':
+        d.node.current_joint_state.position[0] = .2
+    with pytest.raises((ValueError, RuntimeError)):
+        a.draw_x()
+    expected = [] if problem in ('stale', 'not_zero') else ['pose']
+    assert [kind for kind, _ in d.calls] == expected
+
+
 @pytest.mark.parametrize('key,value',[
     ('canvas_axes','positive_x_negative_y'),('drawing_link6_z_m',.21),
     ('hover_link6_z_m',.206),('max_velocity_scaling',1.01),
-    ('required_orientation_xyzw',[0,0,0,0]),('orientation_tolerance_rad',float('nan'))])
+    ('required_orientation_xyzw',[0,0,0,0]),('orientation_tolerance_rad',float('nan')),
+    ('allow_direct_zero_approach', 'false')])
 def test_incomplete_or_inconsistent_real_profile_rejected(key,value):
     p=copy.deepcopy(profile());p[key]=value
     with pytest.raises(ValueError): BoardCanvas(p)
