@@ -104,8 +104,10 @@ class MotionDriver:
     def verified_pose_result(self, result):
         return verify_pose_result(result, self.node.settings)
 
-    def pose(self, target):
-        return self.pose_motion.move(target)
+    def pose(self, target, *, validate_plan=None, require_orientation=True):
+        return self.pose_motion.move(
+            target, validate_plan=validate_plan, require_orientation=require_orientation,
+        )
 
     def linear(self, target_position, *, speed=None, allow_excursion_retry=False,
                excursion_limit=.5):

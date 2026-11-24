@@ -109,6 +109,18 @@ def test_pose_motion_checks_the_plan_before_executing():
     assert driver.execute.return_value["passed"] is False
 
 
+def test_failed_pose_plan_validation_discards_the_trajectory_before_execution():
+    driver = Mock()
+    validate = Mock(side_effect=RuntimeError("Tool attitude outside entry tolerance"))
+
+    with pytest.raises(RuntimeError, match="outside entry tolerance"):
+        PoseMotion(driver).move(Pose(), validate_plan=validate)
+
+    validate.assert_called_once_with(driver.node.planned_trajectory)
+    driver.node.invalidate_plan.assert_called_once_with()
+    driver.execute.assert_not_called()
+
+
 def test_joint_motion_named_and_recorded_targets_use_verified_execution():
     driver = Mock()
     joints, pose = {"joint1": .1}, Pose()

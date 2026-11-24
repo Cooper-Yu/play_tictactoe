@@ -87,7 +87,12 @@ def direct_zero_fixture():
     d.node.current_joint_state = SimpleNamespace(name=names, position=[0.] * len(names))
     d.named_target = lambda name: (dict.fromkeys(names, 0.), None)
 
-    def pose(target):
+    def pose(target, *, validate_plan, require_orientation):
+        trajectory = SimpleNamespace(joint_trajectory=SimpleNamespace(
+            joint_names=names, points=[SimpleNamespace(positions=[0.] * len(names))],
+        ))
+        d.fk = lambda _: target
+        validate_plan(trajectory)
         d.calls.append(('pose', copy.deepcopy(target)))
         d.actual = copy.deepcopy(target)
         return {'passed': True}
@@ -121,8 +126,10 @@ def test_direct_zero_approach_failure_never_lowers(problem):
     a, d = direct_zero_fixture()
     original_pose = d.pose
 
-    def pose(target):
-        result = original_pose(target)
+    def pose(target, *, validate_plan, require_orientation):
+        result = original_pose(
+            target, validate_plan=validate_plan, require_orientation=require_orientation,
+        )
         if problem == 'rejected':
             return {'passed': False}
         if problem == 'low':
@@ -139,7 +146,59 @@ def test_direct_zero_approach_failure_never_lowers(problem):
     with pytest.raises((ValueError, RuntimeError)):
         a.draw_x()
     expected = [] if problem in ('stale', 'not_zero') else ['pose']
+    if problem == 'wrong_angle':
+        expected.append('pose')
     assert [kind for kind, _ in d.calls] == expected
+
+
+def test_direct_path_keeps_height_and_allows_a_tilted_sample_above_the_board():
+    from geometry_msgs.msg import Pose
+
+    a, _ = direct_zero_fixture()
+    drawing = a._prepare(a.x_strokes())
+    point = drawing.paths[0][0]
+    trajectory = SimpleNamespace(joint_trajectory=SimpleNamespace(
+        joint_names=['joint1'], points=[
+            SimpleNamespace(positions=[0.]), SimpleNamespace(positions=[.04]),
+        ],
+    ))
+
+    def fk(joints):
+        pose = Pose()
+        pose.position.x, pose.position.y = point[:2]
+        pose.position.z = .221
+        if joints['joint1'] == 0.:
+            pose.position.x = a.canvas.x0 - .02
+        if joints['joint1'] < .03:
+            pose.orientation.w = 1.
+        else:
+            pose.orientation.y = 1.
+        return pose
+
+    drawing.verify_direct_approach(trajectory, fk, .216, lambda: False)
+    with pytest.raises(RuntimeError, match='drops below board clearance'):
+        drawing.verify_direct_approach(trajectory, fk, .225, lambda: False)
+
+
+def test_hover_orientation_is_corrected_once_before_lowering():
+    a, d = direct_zero_fixture()
+    move = d.pose
+    checks = []
+
+    def pose(target, *, validate_plan, require_orientation):
+        result = move(target, validate_plan=validate_plan, require_orientation=require_orientation)
+        checks.append(require_orientation)
+        if not require_orientation:
+            d.actual.orientation.y, d.actual.orientation.w = 0., 1.
+        return result
+
+    d.pose = pose
+    result = a.draw_x()
+    assert checks == [False, True]
+    assert [name for name, _ in d.calls[:5]] == ['pose', 'pose', 'linear', 'linear', 'path']
+    assert [stage['stage'] for stage in result['stages'][:2]] == [
+        'approach_from_zero', 'adjust_hover_orientation',
+    ]
 
 
 @pytest.mark.parametrize('key,value',[

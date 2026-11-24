@@ -51,7 +51,7 @@ class CanvasDrawing(StrokeDrawing):
             # Only the contact path uses the requested drawing scaling.
             if name.endswith('_draw'):
                 scaling = requested
-            elif name == 'approach_from_zero':
+            elif name in ('approach_from_zero', 'adjust_hover_orientation'):
                 value = min(.1, self.canvas.profile.get('travel_velocity_scaling', 1.0))
                 scaling = dict(velocity_scaling=value, acceleration_scaling=value)
             else:
@@ -121,6 +121,34 @@ class CanvasDrawing(StrokeDrawing):
         error = 2 * math.acos(min(1., dot))
         return error <= self.canvas.profile['orientation_tolerance_rad']
 
+    def verify_direct_approach(self, trajectory, fk, clearance, cancelled):
+        """Check that the planned flange stays above the board clearance."""
+        joint_path = trajectory.joint_trajectory
+        previous = joint_path.points[0].positions
+        over_board = False
+        margin = .005
+        for point in joint_path.points:
+            end = point.positions
+            count = max(1, math.ceil(max(abs(b - a) for a, b in zip(previous, end)) / .025))
+            for step in range(1, count + 1):
+                if cancelled():
+                    raise RuntimeError('Drawing cancelled during direct approach verification')
+                ratio = step / count
+                joints = {name: a + ratio * (b - a)
+                          for name, a, b in zip(joint_path.joint_names, previous, end)}
+                pose = fk(joints)
+                p = pose.position
+                if not all(math.isfinite(value) for value in (p.x, p.y, p.z)):
+                    raise RuntimeError('Direct approach has invalid pose feedback')
+                if (self.canvas.x0 - margin <= p.x <= self.canvas.x1 + margin
+                        and self.canvas.y0 - margin <= p.y <= self.canvas.y1 + margin):
+                    over_board = True
+                    if p.z < clearance:
+                        raise RuntimeError('Direct approach drops below board clearance')
+            previous = end
+        if not over_board:
+            raise RuntimeError('Direct approach did not reach the drawing area')
+
     def _approach_from_zero(self, driver, upper, clearance, cancelled, on_stage):
         if not self.canvas.profile.get('allow_direct_zero_approach', False):
             raise ValueError('Move to clear drawing orientation before drawing')
@@ -140,19 +168,34 @@ class CanvasDrawing(StrokeDrawing):
         (target.orientation.x, target.orientation.y, target.orientation.z,
          target.orientation.w) = self.canvas.profile['required_orientation_xyzw']
         on_stage('approach_from_zero')
-        result = driver.pose(target)
-        if not isinstance(result, dict) or result.get('passed') is not True:
-            raise RuntimeError('Direct drawing approach failed')
-        upper = driver.current_pose()
-        point = upper.position
-        error = math.dist(
-            (point.x, point.y, point.z),
-            (target.position.x, target.position.y, target.position.z),
+        upper = self._verified_hover(driver, target, clearance, cancelled, 'approach_from_zero')
+        if not self._drawing_orientation_matches(upper.orientation):
+            if cancelled():
+                raise RuntimeError('Drawing cancelled before hover orientation adjustment')
+            on_stage('adjust_hover_orientation')
+            upper = self._verified_hover(
+                driver, target, clearance, cancelled, 'adjust_hover_orientation',
+            )
+            if not self._drawing_orientation_matches(upper.orientation):
+                raise RuntimeError('Correct drawing orientation was not reached at hover')
+        return upper
+
+    def _verified_hover(self, driver, target, clearance, cancelled, stage):
+        result = driver.pose(
+            target,
+            validate_plan=lambda trajectory: self.verify_direct_approach(
+                trajectory, driver.fk, clearance, cancelled
+            ),
+            require_orientation=stage != 'approach_from_zero',
         )
-        if not (point.z >= clearance and error <= .001
-                and self._drawing_orientation_matches(upper.orientation)):
-            raise RuntimeError('Direct approach did not reach the verified drawing hover pose')
-        self.results.append({'stage': 'approach_from_zero', 'result': copy.deepcopy(result)})
+        if not isinstance(result, dict) or result.get('passed') is not True:
+            raise RuntimeError(f'{stage} failed')
+        upper = driver.current_pose()
+        p, goal = upper.position, target.position
+        error = math.dist((p.x, p.y, p.z), (goal.x, goal.y, goal.z))
+        if not (p.z >= clearance and error <= .001):
+            raise RuntimeError(f'{stage} did not reach the verified drawing hover position')
+        self.results.append({'stage': stage, 'result': copy.deepcopy(result)})
         return upper
 
     def _run(self, driver, cancelled, on_stage):
