@@ -201,6 +201,22 @@ def test_hover_orientation_is_corrected_once_before_lowering():
     ]
 
 
+def test_verified_direct_hover_does_not_replan_submillimeter_xy_error():
+    a, d = direct_zero_fixture()
+    move = d.pose
+
+    def pose(target, **options):
+        result = move(target, **options)
+        d.actual.position.x += .00005
+        return result
+
+    d.pose = pose
+    result = a.draw_x()
+    assert result['stages'][1]['result']['reason'] == 'verified_direct_hover'
+    assert [kind for kind, _ in d.calls[:4]] == ['pose', 'linear', 'linear', 'path']
+    assert d.calls[1][1].position.x == pytest.approx(d.calls[0][1].position.x + .00005)
+
+
 @pytest.mark.parametrize('key,value',[
     ('canvas_axes','positive_x_negative_y'),('drawing_link6_z_m',.21),
     ('hover_link6_z_m',.206),('max_velocity_scaling',1.01),

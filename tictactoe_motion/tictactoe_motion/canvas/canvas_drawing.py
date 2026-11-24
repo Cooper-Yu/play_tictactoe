@@ -202,12 +202,14 @@ class CanvasDrawing(StrokeDrawing):
         self.results=[]
         if cancelled():raise RuntimeError('Drawing cancelled')
         upper=driver.current_pose()
+        reached_direct_hover = False
         if self.canvas.environment == 'real':
             if getattr(getattr(driver, 'recording', None), 'environment', None) != 'real':
                 raise ValueError('Real canvas requires a real motion driver')
             clearance = self.transfer_z or self.upper_z
             if not self._drawing_orientation_matches(upper.orientation):
                 upper = self._approach_from_zero(driver, upper, clearance, cancelled, on_stage)
+                reached_direct_hover = True
             if upper.position.z < clearance-0.0001:
                 on_stage('raise_before_transfer')
                 lift = copy.deepcopy(upper.position); lift.z = clearance
@@ -219,14 +221,18 @@ class CanvasDrawing(StrokeDrawing):
                 upper = driver.current_pose()
                 if self.transfer_z is not None and upper.position.z < clearance-.0001:
                     raise RuntimeError('Canvas transfer clearance not reached')
-        upper.position.x,upper.position.y,_=self.paths[0][0]
+        if not reached_direct_hover:
+            upper.position.x,upper.position.y,_=self.paths[0][0]
         transfer_z = max(upper.position.z, self.upper_z) if self.canvas.environment == 'real' else self.upper_z
         upper.position.z=transfer_z
         on_stage('approach')
         actual = driver.current_pose().position
         distance = math.dist((actual.x,actual.y,actual.z),
                              (upper.position.x,upper.position.y,upper.position.z))
-        if self.canvas.environment == 'real' and distance <= 0.00001:
+        if reached_direct_hover:
+            # The verified pose approach already reached the XY target within tolerance.
+            result = dict(passed=True, skipped=True, reason='verified_direct_hover')
+        elif self.canvas.environment == 'real' and distance <= 0.00001:
             # A <=10 micrometer approach is already satisfied; do not execute a zero-length plan.
             result = dict(passed=True, skipped=True, reason='already_at_approach',
                           position_error_m=distance, orientation_error_rad=0.)
