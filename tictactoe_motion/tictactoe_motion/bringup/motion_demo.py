@@ -11,10 +11,10 @@ class MotionDemo:
     @brief Coordinate the motion planning and execution demo.
     """
 
-    def __init__(self, node):
+    def __init__(self, node, *, service_prefix=''):
         self.node = node
         self.execution_service = self.node.create_service(
-            Trigger, "/execute_planned_trajectory", self.execution_trigger_callback
+            Trigger, service_prefix + "/execute_planned_trajectory", self.execution_trigger_callback
         )
         period = self.node.settings["state_log_period"]
         self.state_timer = (
@@ -22,15 +22,17 @@ class MotionDemo:
         )
         self.planning_service = self.node.create_service(
             Trigger,
-            "/plan_step",
+            service_prefix + "/plan_step",
             self.planning_trigger_callback
         )
 
-        self.xy_service = node.create_service(Trigger, '/plan_xy', self.xy_callback)
+        self.xy_service = node.create_service(Trigger, service_prefix + '/plan_xy', self.xy_callback)
         node.declare_parameter('cross_size', 0.02)
         node.declare_parameter('circle_radius', 0.01)
-        self.cross_service = node.create_service(Trigger, '/plan_cross', lambda req, res: self.drawing_callback(res, 'cross'))
-        self.circle_service = node.create_service(Trigger, '/plan_circle', lambda req, res: self.drawing_callback(res, 'circle'))
+        self.cross_service = node.create_service(
+            Trigger, service_prefix + '/plan_cross', lambda req, res: self.drawing_callback(res, 'cross'))
+        self.circle_service = node.create_service(
+            Trigger, service_prefix + '/plan_circle', lambda req, res: self.drawing_callback(res, 'circle'))
 
     def drawing_callback(self, response, shape):
         try:

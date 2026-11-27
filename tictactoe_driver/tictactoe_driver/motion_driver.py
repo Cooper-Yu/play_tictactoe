@@ -1,6 +1,7 @@
 """Shared motion orchestration for simulation and real hardware."""
 
 import copy
+import os
 import time
 from pathlib import Path
 
@@ -36,8 +37,10 @@ class MotionDriver:
         self.executor = SingleThreadedExecutor()
         self.node = MotionPlanner()
         self.node.get_logger().set_level(rclpy.logging.LoggingSeverity.WARN)
-        self.motion = MotionDemo(self.node)
-        self.recording = PoseRecordingDemo(self.node)
+        # Each GUI owns its own plans and pose records, even on the same ROS graph.
+        self.service_prefix = f'/tictactoe_driver/{client_name}_{os.getpid()}'
+        self.motion = MotionDemo(self.node, service_prefix=self.service_prefix)
+        self.recording = PoseRecordingDemo(self.node, service_prefix=self.service_prefix)
         self.client = Node(client_name, use_global_arguments=False)
         self.executor.add_node(self.node)
         self.executor.add_node(self.client)
@@ -49,13 +52,39 @@ class MotionDriver:
         self.fk_client = self.client.create_client(GetPositionFK, '/compute_fk')
         self.samples = []
         self.results = []
+        self.on_motion_progress = None
+        self.motion_progress = None
 
     def until(self, predicate, timeout=20):
         deadline = time.monotonic() + timeout
+        self.report_motion_progress()
         while not predicate():
             if time.monotonic() >= deadline:
                 raise TimeoutError('motion condition timed out')
             self.executor.spin_once(timeout_sec=0.02)
+            self.report_motion_progress()
+
+    def reset_motion_progress(self):
+        self.motion_progress = None
+
+    def report_motion_progress(self):
+        callback = getattr(self, 'on_motion_progress', None)
+        if callback is None:
+            return
+        previous = self.motion_progress
+        if self.execution.is_executing:
+            phase = 'executing'
+        elif self.node.is_planning:
+            phase = 'planning'
+        elif previous and previous['phase'] == 'planning' and self.node.planned_trajectory is not None:
+            phase = 'planned'
+        else:
+            phase = 'idle'
+        planned = phase in ('planned', 'executing') or bool(previous and previous['planned'])
+        progress = dict(phase=phase, planned=planned)
+        if progress != previous:
+            self.motion_progress = progress
+            callback(progress)
 
     def result(self, future, timeout=20):
         self.until(future.done, timeout)
@@ -63,7 +92,7 @@ class MotionDriver:
 
     def call(self, name, success=True):
         if name not in self.services:
-            self.services[name] = self.client.create_client(Trigger, '/' + name)
+            self.services[name] = self.client.create_client(Trigger, self.service_prefix + '/' + name)
         service = self.services[name]
         self.until(service.service_is_ready)
         response = self.result(service.call_async(Trigger.Request()))
@@ -127,7 +156,10 @@ class MotionDriver:
         return check_trajectory(self.node.planned_trajectory, limit)
 
     def execute(self, timeout=45):
-        return run_trajectory(self, timeout)
+        try:
+            return run_trajectory(self, timeout)
+        finally:
+            self.report_motion_progress()
 
     def record(self, name):
         self.parameters(record_name=name)

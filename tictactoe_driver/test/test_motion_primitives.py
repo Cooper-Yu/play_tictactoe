@@ -47,6 +47,37 @@ def test_both_drivers_assemble_the_same_motion_types(monkeypatch, tmp_path, driv
         method_mock.assert_called_once()
 
 
+def test_motion_progress_preserves_a_quick_plan_until_next_job():
+    driver = motion_driver.MotionDriver.__new__(motion_driver.MotionDriver)
+    updates = []
+    driver.on_motion_progress = updates.append
+    driver.node = SimpleNamespace(is_planning=True, planned_trajectory=None)
+    driver.execution = SimpleNamespace(is_executing=False)
+    driver.reset_motion_progress()
+
+    def receive_plan(**kwargs):
+        driver.node.planned_trajectory = object()
+        driver.node.is_planning = False
+
+    driver.executor = SimpleNamespace(spin_once=receive_plan)
+    driver.until(lambda: not driver.node.is_planning)
+    driver.execution.is_executing = True
+    driver.report_motion_progress()
+    driver.execution.is_executing = False
+    driver.report_motion_progress()
+    driver.reset_motion_progress()
+    driver.report_motion_progress()
+
+    assert updates == [
+        dict(phase='planning', planned=False),
+        dict(phase='planned', planned=True),
+        dict(phase='executing', planned=True),
+        dict(phase='idle', planned=True),
+        dict(phase='idle', planned=False),
+    ]
+
+
+
 def test_cartesian_stroke_uses_achieved_height_and_orientation():
     driver = Mock()
     anchor = Pose()

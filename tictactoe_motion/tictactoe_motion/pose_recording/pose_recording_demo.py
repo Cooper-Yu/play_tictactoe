@@ -25,7 +25,7 @@ class PoseRecordingDemo:
     request. Contact with a board or button must be confirmed by the operator.
     """
 
-    def __init__(self, node):
+    def __init__(self, node, *, service_prefix=''):
         self.node = node
         node.pose_recording_demo = self
         self.settings = node.settings
@@ -49,7 +49,7 @@ class PoseRecordingDemo:
         self.last_status = {}
         node.trajectory_executor.on_verification = self._return_verified
         self.status_publisher = node.create_publisher(
-            String, "/pose_recording/status",
+            String, service_prefix + "/pose_recording/status",
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL),
         )
         callbacks = {
@@ -61,7 +61,7 @@ class PoseRecordingDemo:
             "/plan_return": self.return_callback,
         }
         self.services = [
-            node.create_service(Trigger, name, callback)
+            node.create_service(Trigger, service_prefix + name, callback)
             for name, callback in callbacks.items()
         ]
         try:
