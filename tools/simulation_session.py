@@ -7,6 +7,7 @@ from pathlib import Path
 import signal
 import subprocess
 import time
+from tempfile import TemporaryDirectory
 import uuid
 
 
@@ -68,6 +69,8 @@ def disable_shadows(env):
         return False
 
 def main():
+    from piper_spawn_pose import prepare_piper_description_overlay
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--domain', type=int, default=187)
     parser.add_argument('--master-port', type=int, default=11605)
@@ -111,11 +114,17 @@ def main():
         logs = []
         readiness = None
         auxiliaries = []
+        startup = TemporaryDirectory(dir=root, prefix='startup-')
         try:
+            overlay, positions = prepare_piper_description_overlay(startup.name)
+            gazebo_env = dict(env, AMENT_PREFIX_PATH=os.pathsep.join(filter(None, (
+                str(overlay), env.get('AMENT_PREFIX_PATH'),
+            ))))
+            state['initial_arm_positions_rad'] = positions
             for name, command in commands:
                 log = (root/(name+'.log')).open('w')
                 logs.append(log)
-                child = subprocess.Popen(command, env=env, stdout=log,
+                child = subprocess.Popen(command, env=gazebo_env, stdout=log,
                                          stderr=subprocess.STDOUT, start_new_session=True)
                 children.append(child)
                 state['pids'].append(child.pid)
@@ -167,6 +176,7 @@ def main():
                     pass
             for log in logs:
                 log.close()
+            startup.cleanup()
             state.update(remaining_pids=remaining, stopped=True)
             (root/'session.json').write_text(json.dumps(state, indent=2))
             print('SIMULATION_SESSION_STOPPED '+json.dumps({'remaining_pids': remaining}), flush=True)

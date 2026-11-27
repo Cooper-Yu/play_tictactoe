@@ -63,7 +63,8 @@ This sets two software-rendering threads, refuses duplicate live Gazebo binaries
 and owns all child processes with a unique environment tag. Ctrl+C or creating
 `/tmp/tictactoe-session/STOP` stops the session. It automatically ends after 900
 seconds; `--duration` can change the bound up to 3600 seconds. It never commands
-robot motion. Closing Gazebo's GUI may also terminate the original course launch;
+robot motion. The managed launcher initializes the simulated arm from the SRDF `clear` pose to avoid a self-colliding cold start.
+Closing Gazebo's GUI may also terminate the original course launch;
 the manager then cleans the rest of its own session. Reuse the existing session
 rather than starting the original launch repeatedly. The manager does not kill
 unmanaged user sessions or change physics, camera resolution or course assets.
