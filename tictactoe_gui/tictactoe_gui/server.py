@@ -62,6 +62,8 @@ class CanvasSession:
     def submit(self, kind, strokes=None, game_request=None):
         if kind == 'game_start':
             opponent = game_request.get('opponent', 'ai')
+            if game_request.get('input_source') == 'physical' and self.environment != 'real':
+                raise ValueError('Physical board input requires the real robot')
             if opponent not in ('ai', 'human'):
                 raise ValueError('Unknown opponent mode')
             if opponent == 'human' and (
@@ -73,7 +75,7 @@ class CanvasSession:
                 raise ValueError('Real games require visually confirmed moves')
             if kind == 'game_start' and (
                     (game_request.get('mode', 'classic'), game_request['size']) not in VISION_MODES
-                    or game_request.get('input_source') not in ('vision', 'handwriting')):
+                    or game_request.get('input_source') not in ('vision', 'handwriting', 'physical')):
                 raise ValueError('Real games require a supported board and camera recognition mode')
         prepared = (prepare_strokes(strokes) if kind == 'draw' else
                     prepare_game_strokes(strokes) if kind == 'game_handwriting' else [])
@@ -96,7 +98,7 @@ class CanvasSession:
                 if (current is None or current["revision"] != game_request["revision"]
                         or current["phase"] != "between_rounds"):
                     raise RuntimeError("Cannot start round two now")
-            if kind == "game_start" and game_request.get("input_source", "click") in ("vision", "handwriting"):
+            if kind == "game_start" and game_request.get("input_source", "click") in ("vision", "handwriting", "physical"):
                 if not self.vision_available:
                     raise RuntimeError("Configure first YOLO Weights")
                 if (game_request.get("mode", "classic"), game_request["size"]) not in VISION_MODES:
@@ -242,7 +244,7 @@ def make_handler(session, preview=None):
                     if any(type(data.get(field)) is not int for field in fields):
                         raise ValueError('Board size, Cell coordinates and game revision must be integers')
                     if kind == 'game_start':
-                        if data.get('input_source', 'click') not in ('click', 'vision', 'handwriting'):
+                        if data.get('input_source', 'click') not in ('click', 'vision', 'handwriting', 'physical'):
                             raise ValueError('Unknown move input mode')
                         mode = data.get('mode', 'classic')
                         if not isinstance(mode, str) or (mode, data['size']) not in WIN_LENGTHS:

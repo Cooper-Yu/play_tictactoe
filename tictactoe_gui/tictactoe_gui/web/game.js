@@ -168,7 +168,9 @@ function render() {
       return cell;
     }));
   }
-  winCells = game && !showPoints ? winningRun(game.board, game.winner, game.win_length ?? (size === 3 ? 3 : 5)) : [];
+  winCells = game && !showPoints ? (Array.isArray(game.winning_cells)
+    ? game.winning_cells.map(([row, col]) => row * size + col)
+    : winningRun(game.board, game.winner, game.win_length ?? (size === 3 ? 3 : 5))) : [];
   Array.from(board.children).forEach((cell, index) => {
     const row = Math.floor(index / size), col = index % size;
     const mark = game?.board[row][col] ?? '';
@@ -260,6 +262,8 @@ function render() {
     else if (game.phase === 'blocked' && state?.continuation?.available) message = state.message + '. Inspect the board, then use Resume; no original player stroke is replayed.';
     else message = outcome ? 'Game finished. Start a new game' : phases[game.phase] || message;
   }
+  if (busy && game?.phase === 'drawing_win_line') message = 'Drawing the winning line…';
+  if (busy && state?.reply_countdown > 0) message = 'Robot reply in ' + state.reply_countdown + ' s';
   get('status').textContent = notice || message;
   const cameraUrl = state?.camera_sequence
     ? (cameraDetection.checked ? '/api/game/perception?view=camera_detections&seq=' : '/api/game/camera?seq=') + state.camera_sequence

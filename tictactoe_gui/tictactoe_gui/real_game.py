@@ -45,7 +45,7 @@ def real_game_worker(session, *, url, perception, restore=None):
     if restore:
         saved_path = Path(restore)
         saved = json.loads(saved_path.read_text())['game']
-        if saved['phase'] != 'finished' or saved.get('input_source') != 'vision':
+        if saved['phase'] != 'finished' or saved.get('input_source') not in ('vision', 'handwriting', 'physical'):
             raise ValueError('Only completed vision games can be restored for display')
         session.update(game=saved, frame_source='saved', camera_fresh=False, robot_fresh=False)
         photo = saved_path.parent/'finished.jpg'
@@ -66,9 +66,14 @@ def real_game_worker(session, *, url, perception, restore=None):
         session.update(**changes)
         if 'game' in changes:
             game_state = changes['game']
+            if game_state.get('winning_line') is not None or game_state['phase'] == 'preparing':
+                temporary = session.output/'winning-line.tmp'
+                temporary.write_text(json.dumps(game_state, indent=2))
+                temporary.replace(session.output/'winning-line.json')
             timing.emit('game_state', phase=game_state['phase'], revision=game_state['revision'],
                         board=game_state['board'])
-    game = GameCoordinator(actions, publish, session.stop.is_set, flip=False)
+    game = GameCoordinator(actions, publish, session.stop.is_set, flip=False,
+                           draw_winning_line=True)
 
     def camera_loop():
         with requests.Session() as http:
@@ -94,6 +99,7 @@ def real_game_worker(session, *, url, perception, restore=None):
     gate_revision = None
     pending_turn = None
     resumed_strokes = None
+    awaiting_resumed_move = False
 
     def checkpoint(stage, job=None):
         nonlocal pending_turn
@@ -139,17 +145,19 @@ def real_game_worker(session, *, url, perception, restore=None):
         return found
 
     def register(found, revision):
-        nonlocal resumed_strokes
+        nonlocal resumed_strokes, awaiting_resumed_move
         if resumed_strokes:
             verify_handwriting_cell(resumed_strokes, found, game.game.rows)
             verify_handwriting_shape(resumed_strokes, game.game.width, game.game.height)
         resumed_strokes = None
+        awaiting_resumed_move = False
         if pending_turn is not None:
             checkpoint('committing')
         timing.emit('player_confirmed', revision=revision, found=found)
         session.update(message='Three camera frames confirmed. Submitting player move.')
         game.register_observed_move(*found, revision)
-        if game.game.outcome:
+        if (game.game.outcome and game.input_source != 'physical'
+                and not game.winning_line):
             client.park('zero')
 
     try:
@@ -166,18 +174,22 @@ def real_game_worker(session, *, url, perception, restore=None):
         session.update(inference_warmup_s=time.monotonic()-warmup_started)
         if restore:
             saved = json.loads(Path(restore).read_text())['game']
-            cells = perception.detect_cells(session.camera_image())
-            expected = {(r,c):frozenset((m,)) for r,row in enumerate(saved['board'])
-                        for c,m in enumerate(row) if m}
-            if cells != expected:
-                raise RuntimeError('The live board differs from the saved game, Check calibration or board contents')
+            # A terminal decoration can cross the marks. Restore it for display only;
+            # never reinterpret it as a new turn or replay an incomplete line.
+            if not saved.get('winning_line'):
+                cells = perception.detect_cells(session.camera_image())
+                expected = {(r,c):frozenset((m,)) for r,row in enumerate(saved['board'])
+                            for c,m in enumerate(row) if m}
+                if cells != expected:
+                    raise RuntimeError('The live board differs from the saved game, Check calibration or board contents')
             session.update(game=saved)
         session.update(state='ready', busy=False, message='Real vision game connected. Start a new game to clear and prepare the physical board.')
         while not session.shutdown.is_set():
             try:
                 job = session.jobs.get(timeout=.2)
             except queue.Empty:
-                if game.game is None or session.status().get('state') != 'ready':
+                if (game.game is None or session.status().get('state') != 'ready'
+                        or (game.input_source != 'physical' and not awaiting_resumed_move)):
                     continue
                 try:
                     found = observe()
@@ -188,6 +200,16 @@ def real_game_worker(session, *, url, perception, restore=None):
                             session.state.update(busy=True, state='running')
                             session.state['job'] += 1
                             revision = session.state['job']
+                        winning_move = game.game.has_line(game.game.turn, found[0], found[1])
+                        if game.input_source == 'physical' and (game.opponent == 'ai' or winning_move):
+                            try:
+                                for seconds in (2, 1):
+                                    session.update(reply_countdown=seconds)
+                                    if session.stop.wait(1) or session.shutdown.is_set():
+                                        game.block(revision)
+                                        raise RuntimeError('Robot reply cancelled during countdown')
+                            finally:
+                                session.update(reply_countdown=None)
                         register(found, revision)
                         session.update(state='ready', busy=False, message='Visual move processed')
                 except Exception as error:
@@ -219,6 +241,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                         checkpoint('grid_returning')
                     client.park('zero')
                     resumed_strokes = pending_turn.get('strokes')
+                    awaiting_resumed_move = pending_turn.get('kind') != 'grid'
                     game.game.phase = 'playing'
                     if (pending_turn.get('kind') == 'grid' and game.opponent == 'ai'
                             and game.game.turn != game.human):
@@ -231,6 +254,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                     session.update(vision=None)
                 elif kind == 'reset':
                     pending_turn = resumed_strokes = None
+                    awaiting_resumed_move = False
                     checkpoint('cleared')
                     client.command(kind='reset', speed=.1)
                     client.park('zero')
@@ -238,6 +262,7 @@ def real_game_worker(session, *, url, perception, restore=None):
                     session.update(game=None, vision=None)
                 elif kind == 'game_start':
                     pending_turn = resumed_strokes = None
+                    awaiting_resumed_move = False
                     checkpoint('new_game')
                     session.update(vision=None)
                     client.command(kind='reset', speed=.1)

@@ -369,3 +369,9 @@ root cause retrospectively.
 Real drawing and normal jog controls now default to 10% speed scaling. Both the
 request validator and board profile cap drawing at 10%; 5% remains selectable.
 ResetAction retains its independent 5% cap. Feedback freshness remains 1.0 s.
+
+### Real Arena winning line
+
+After a verified terminal move in a line-winning game, the real Arena draws one line between the calibrated centers of the winning run's first and last cells. Click, Freehand and physical-board input share this path. Physical input retains the two-second countdown before robot motion. Draws and score games have no decoration.
+
+The backend publishes `winning_cells` and `winning_line.status` (`pending`, `drawing`, `completed`, `failed`), and saves `winning-line.json` in the session output. GUI polling never submits a line request. An interrupted line is not automatically replayed; restored terminal games are display-only. Local regression uses camera and motion doubles; physical line placement still requires an authorized robot test.

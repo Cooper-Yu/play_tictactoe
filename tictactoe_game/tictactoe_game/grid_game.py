@@ -112,3 +112,29 @@ class GridGame:
                     count+=1;r+=sign*dr;c+=sign*dc
             if count>=self.win_length:return True
         return False
+
+    def winning_cells(self):
+        """Return one maximal winning run in board order, without changing the board."""
+        symbol = self.outcome
+        if symbol not in ('X', 'O'):
+            return []
+
+        def matches(row, col):
+            return (0 <= row < self.rows and 0 <= col < self.columns
+                    and self.board[row*self.columns+col] == symbol)
+
+        for row in range(self.rows):
+            for col in range(self.columns):
+                if not matches(row, col):
+                    continue
+                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                    if matches(row-dr, col-dc):
+                        continue
+                    cells = []
+                    r, c = row, col
+                    while matches(r, c):
+                        cells.append((r, c))
+                        r, c = r+dr, c+dc
+                    if len(cells) >= self.win_length:
+                        return cells
+        return []

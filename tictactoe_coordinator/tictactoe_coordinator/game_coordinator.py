@@ -22,11 +22,13 @@ VISION_MODES = frozenset((("classic", 3), ("four", 9)))
 class GameCoordinator:
     """Own the game on the worker thread and publish snapshots after verified marks."""
 
-    def __init__(self, actions, publish, cancelled, *, flip=True):
+    def __init__(self, actions, publish, cancelled, *, flip=True, draw_winning_line=False):
         self.actions = actions
         self.flip = flip
         self.publish = publish
         self.cancelled = cancelled
+        self.draw_winning_line = draw_winning_line
+        self.winning_line = None
         self.game = None
         self.mode = "classic"
         self.input_source = "click"
@@ -50,7 +52,7 @@ class GameCoordinator:
             return self.player_mark
         return "O" if self.player_mark == "X" else "X"
 
-    def _update(self, phase, revision):
+    def _update(self, phase, revision, **activity):
         game = self.game
         size = game.rows
         shown = [self._mark(cell) for cell in game.board]
@@ -60,13 +62,15 @@ class GameCoordinator:
                      human=self.player_mark, winner=self._mark(game.outcome),
                      first="player" if self.human == first_mark else "ai",
                      board=[shown[i:i+size] for i in range(0, len(shown), size)])
+        state['winning_cells'] = game.winning_cells() if self.mode != 'score' else []
+        state['winning_line'] = self.winning_line
         if self.mode == "score":
             current = self._player_scores()
             state.update(weights=WEIGHTS, round=self.round_number,
                          current_score=current, rounds=self.rounds.copy(),
                          totals=self._totals(), match_winner=self.match_winner,
                          decided_by=self.decided_by)
-        self.publish(game=state)
+        self.publish(game=state, **activity)
 
     def _player_scores(self):
         scores = score(self.game.board)
@@ -92,8 +96,8 @@ class GameCoordinator:
                 raise RuntimeError("Configure an executable first TICTACTOE_RAPFI")
         if first not in ("player", "ai") or mark not in ("X", "O"):
             raise ValueError("Invalid turn order or symbol")
-        if input_source not in ("click", "vision", "handwriting") or (
-            input_source in ("vision", "handwriting") and (mode, size) not in VISION_MODES
+        if input_source not in ("click", "vision", "handwriting", "physical") or (
+            input_source != "click" and (mode, size) not in VISION_MODES
         ):
             raise ValueError("Visual moves support classic 3×3 Tic-Tac-Toe or 9×9 four-in-a-row")
         self.input_source = input_source
@@ -109,6 +113,7 @@ class GameCoordinator:
         self._open_round(size, revision)
 
     def _open_round(self, size, revision):
+        self.winning_line = None
         width, height = self.actions.width-.004, self.actions.height-.004
         swapped = self.human != self.player_mark
         if self.mode == "score":
@@ -185,6 +190,31 @@ class GameCoordinator:
             self.decided_by = "coin"
         return "finished"
 
+    def _draw_winning_line(self, revision):
+        """Draw a terminal decoration once; an uncertain/failed stroke is never replayed."""
+        if (not self.draw_winning_line or self.mode == 'score'
+                or self.winning_line is not None):
+            return
+        cells = self.game.winning_cells()
+        if not cells:
+            return
+        points = [self.game.cell_center(*cells[0]), self.game.cell_center(*cells[-1])]
+        self.winning_line = dict(status='pending', cells=cells, points=points)
+        self._update('drawing_win_line', revision)
+        try:
+            self._check_cancelled()
+            self.winning_line = dict(self.winning_line, status='drawing')
+            self._update('drawing_win_line', revision, message='Drawing the winning line')
+            result = self.actions.draw([points], **self._options())
+            if not isinstance(result, dict) or result.get('passed') is not True:
+                raise RuntimeError('Winning line drawing was not verified')
+            self._check_cancelled()
+        except Exception as error:
+            self.winning_line = dict(self.winning_line, status='failed', error=str(error))
+            self._update('finished', revision)
+            raise
+        self.winning_line = dict(self.winning_line, status='completed')
+
     def move(self, row, col, revision):
         self._player_move(row, col, revision, observed=False)
 
@@ -220,4 +250,5 @@ class GameCoordinator:
             phase = "player"
         else:
             phase = self._complete_round() if self.mode == "score" else "finished"
+            self._draw_winning_line(revision)
         self._update(phase, revision)
