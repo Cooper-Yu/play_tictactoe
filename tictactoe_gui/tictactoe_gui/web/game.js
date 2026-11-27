@@ -6,85 +6,96 @@ const gameFetch = (path, options) => fetch(gameURL(path), options);
 const board = get('board');
 const winLine = get('win-line');
 let winCells = [];
-const start = get('start');
+const start = get('start-game');
+const saveSettings = get('save-settings');
 const stop = get('stop');
 const reset = get('reset');
 const image = get('image');
 const cameraDetection = get('camera-detection');
+const settings = get('game-settings');
+const settingsToggle = get('settings-toggle');
+const stageLabels = ['perception', 'decision', 'planning', 'execution'].map(name => {
+  const node = get('stage-' + name);
+  return {node, label: node.querySelector('small')};
+});
+let settingsOpener;
+let lastCameraSequence;
+let cameraAdvancedAt = -Infinity;
+let fadeCamera = false;
 let token;
 let state;
 let sending = false;
 let notice = '';
 let frame;
-let activeMode;
-let activeOpponent;
-let activeInputSource;
+const settingsFields = ['size', 'opponent', 'first', 'mark', 'input-source'];
+let settingsKey;
+let saved = {size: location.hash === '#four' ? 'four' : '3', opponent: 'ai',
+  first: 'player', mark: 'X', 'input-source': 'click'};
 let visionAvailable = false;
+let inkSize;
 let realEnvironment = false;
-const perception = get('perception');
-const perceptionView = get('perception-view');
-const perceptionImage = get('perception-image');
-const perceptionMessage = get('perception-message');
-let perceptionUrl;
-let perceptionRequest;
-let renderedPerception;
-const perceptionCaptions = {
-  rectified: 'Perspective-corrected view aligned with the camera.',
-  edges: 'Edges of the grid and pen strokes.',
-  detections: 'Calibrated cell boundaries and YOLO detections. Labels show symbol, row and column; O/X indicates a conflicting cell.'
-};
-
-function resetPerception() {
-  perceptionRequest?.abort();
-  renderedPerception = undefined;
-  if (perceptionUrl) URL.revokeObjectURL(perceptionUrl);
-  perceptionUrl = undefined;
-  perceptionImage.removeAttribute('src');
-  perceptionImage.hidden = true;
-  perceptionMessage.hidden = false;
-  perceptionMessage.textContent = 'Waiting for camera image';
-  get('perception-caption').textContent = perceptionCaptions[perceptionView.value];
-}
-
-async function updatePerception() {
-  if (!perception.open || !online || !state?.camera_sequence || perceptionRequest) return;
-  const view = perceptionView.value;
-  const key = [state.camera_sequence, state.game?.size, view].join(':');
-  if (renderedPerception === key) return;
-  const request = new AbortController();
-  perceptionRequest = request;
-  try {
-    const response = await gameFetch('/api/game/perception?view=' + view, {
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(12000)])
-    });
-    if (!response.ok) throw Error((await response.json()).error);
-    const imageBlob = await response.blob();
-    if (request.signal.aborted || !perception.open) return;
-    const previous = perceptionUrl;
-    perceptionUrl = URL.createObjectURL(imageBlob);
-    perceptionImage.src = perceptionUrl;
-    perceptionImage.hidden = false;
-    perceptionMessage.hidden = true;
-    if (previous) URL.revokeObjectURL(previous);
-    renderedPerception = key;
-  } catch (error) {
-    if (!request.signal.aborted) {
-      perceptionMessage.textContent = error.message || 'Perception preview is temporarily unavailable';
-      perceptionMessage.hidden = false;
-    }
-  } finally {
-    perceptionRequest = undefined;
-  }
-}
 let online = false;
-const phases = {
-  preparing: 'Preparing board', player: 'Your turn, Select an empty cell to draw X',
-  drawing_x: 'The arm is drawing your X', thinking: 'AI is choosing a cell',
-  drawing_o: 'The arm is drawing AI of O', blocked: 'Game paused, Inspect the board before starting a new game'
+const modes = {
+  '3': {size: 3, win: 3, engine: 'Minimax', example: {0: 'X', 5: 'O'}},
+  four: {size: 9, win: 4, engine: 'Alpha–beta search', example: {38: 'O', 40: 'X', 41: 'X', 42: 'X', 49: 'O'}},
 };
-const chosenMode = () => document.querySelector('input[name="size"]:checked').value;
-const selected = () => ['9', 'four', 'four-three-stone'].includes(chosenMode()) ? 9 : 3;
-const chosenOpponent = () => ['3', 'four'].includes(chosenMode()) ? get('opponent').value : 'ai';
+const choice = name => settings.querySelector('input[name="' + name + '"]:checked').value;
+const option = (name, value) => settings.querySelector('input[name="' + name + '"][value="' + CSS.escape(value) + '"]');
+
+function selectOption(name, value) {
+  const input = option(name, value);
+  if (input && !input.disabled) input.checked = true;
+}
+
+function restoreSettingsForm() {
+  settingsFields.forEach(name => selectOption(name, saved[name]));
+  renderSettings();
+}
+
+function loadSettings(environment) {
+  const key = 'robot-arena/settings/v1:' + location.pathname.replace(/\/+$/, '') + ':' + environment;
+  if (settingsKey === key) return;
+  settingsKey = key;
+  saved['input-source'] = 'click';
+  renderSettings();
+  let stored;
+  try { stored = JSON.parse(localStorage.getItem(key)); } catch { /* Keep session defaults. */ }
+  for (const name of settingsFields) {
+    const storedValue = stored?.[name];
+    const value = name === 'input-source' && storedValue === 'vision' ? 'click' : storedValue;
+    if (typeof value !== 'string' || !option(name, value) || option(name, value).disabled) continue;
+    if (name === 'input-source' && !visionAvailable) continue;
+    saved[name] = value;
+  }
+  restoreSettingsForm();
+}
+
+function renderSettings() {
+  const mode = choice('size');
+  const {size, win, engine, example} = modes[mode];
+  const twoPlayers = choice('opponent') === 'human';
+  get('first-option').hidden = twoPlayers;
+  get('mark-label').textContent = twoPlayers ? 'First symbol' : 'Your symbol';
+  get('input-option').hidden = !visionAvailable;
+  get('physical-input').hidden = !realEnvironment || !visionAvailable;
+  option('input-source', 'physical').disabled = !realEnvironment || !visionAvailable;
+
+  const preview = get('preview-board');
+  if (preview.dataset.mode !== mode) {
+    preview.dataset.mode = mode;
+    preview.style.setProperty('--preview-size', size);
+    preview.replaceChildren(...Array.from({length: size * size}, (_, index) => {
+      const cell = document.createElement('span');
+      cell.textContent = example[index] === 'X' ? '×' : example[index] === 'O' ? '○' : '';
+      return cell;
+    }));
+    get('preview-size').textContent = size + ' × ' + size;
+    get('preview-win').textContent = win + ' in a row';
+  }
+  const engineLabel = twoPlayers ? 'None · two players' : engine;
+  if (get('preview-engine').textContent !== engineLabel) get('preview-engine').textContent = engineLabel;
+}
+
 
 function winningRun(cells, winner, length) {
   if (winner !== 'X' && winner !== 'O') return [];
@@ -122,30 +133,100 @@ function positionWinLine() {
 }
 
 
+function showSettings(show, opener = settingsToggle) {
+  settings.hidden = !show;
+  settingsToggle.setAttribute('aria-expanded', String(show));
+  if (show) {
+    settingsOpener = opener;
+    restoreSettingsForm();
+    settings.querySelector('input:checked')?.focus({preventScroll: true});
+  } else {
+    settingsOpener?.focus({preventScroll: true});
+  }
+}
+
+function renderPipeline(game, vision, busy) {
+  const cameraLive = online && performance.now() - cameraAdvancedAt < 5000 &&
+    (!realEnvironment || state.camera_fresh === true);
+  const sync = get('live-sync');
+  sync.hidden = !vision;
+  sync.dataset.live = String(cameraLive && vision);
+  get('live-sync-label').textContent = cameraLive ? 'Live sync' : 'Waiting for camera';
+
+  const phase = game?.phase;
+  const stage = state?.continuation?.stage;
+  const observing = vision && cameraLive && phase === 'player';
+  const confirming = busy && stage === 'camera_confirmation' && cameraLive;
+  const drawing = busy && (['drawing_x', 'drawing_o'].includes(phase) || stage === 'drawing');
+  const motion = state?.motion_progress;
+  const planning = busy && motion?.phase === 'planning';
+  const executing = busy && motion?.phase === 'executing';
+  const returning = busy && stage === 'returning_to_zero';
+  const stages = [
+    state?.vision?.confirmed ? ['done', 'Confirmed']
+      : observing || confirming ? ['active', 'Tracking']
+      : cameraLive ? ['idle', 'Camera ready'] : ['idle', 'Waiting'],
+    phase === 'thinking' && busy ? ['active', 'Choosing move']
+      : state?.decision === 'chosen' ? ['done', 'Move chosen'] : ['idle', 'Idle'],
+    planning ? ['active', 'Planning'] : motion?.planned ? ['done', 'Plan found']
+      : (drawing || returning) && !motion ? ['idle', 'Not reported'] : ['idle', 'Idle'],
+    executing ? ['active', returning ? 'Returning' : 'Executing']
+      : !motion && drawing ? ['active', 'Drawing turn']
+      : busy && phase === 'preparing' && !planning ? ['idle', 'Preparing board']
+      : ['idle', phase === 'blocked' ? 'Paused' : 'Idle'],
+  ];
+  stages.forEach(([kind, text], index) => {
+    const {node, label} = stageLabels[index];
+    node.dataset.state = kind;
+    if (label.textContent !== text) label.textContent = text;
+  });
+}
+
+function gameStatus(game, busy, ready, mark, outcome) {
+  if (notice) return notice.length <= 72 ? notice : 'Action failed.';
+  if (!state || state.state === 'connecting') return 'Connecting…';
+  if (!online || state.state === 'offline') return 'Disconnected.';
+  if (state.state === 'stopping') return 'Stopping robot…';
+  if (state.state === 'stopped') return 'Motion stopped.';
+  if (state.state === 'blocked' || game?.phase === 'blocked') {
+    return state.continuation?.available ? 'Check the board, then resume.' : 'Check the board, then clear it.';
+  }
+  if (state.state === 'failed' && !busy) return 'Action failed.';
+  if (busy) {
+    if (state.reply_countdown > 0) return 'Robot reply in ' + state.reply_countdown + ' s';
+    if (game?.phase === 'drawing_win_line') return 'Drawing the winning line…';
+    if (state.continuation?.stage === 'camera_confirmation'
+        || /^Waiting for camera confirmation|waiting for three consistent camera frames/i.test(state.message ?? '')) {
+      return 'Checking your move…';
+    }
+    if (game?.phase === 'thinking') return 'AI is choosing…';
+    if (state.motion_progress?.phase === 'planning') return 'Planning motion…';
+    if (state.continuation?.stage === 'returning_to_zero') return 'Robot is returning…';
+    if (game?.phase === 'drawing_x') return 'Drawing X…';
+    if (game?.phase === 'drawing_o') return 'Drawing O…';
+    if (game?.phase === 'preparing') return 'Preparing board…';
+    if (game?.input_source === 'handwriting' && game.phase === 'player') return 'Drawing your mark…';
+    return 'Robot is working…';
+  }
+  if (!ready) return 'Waiting for robot…';
+  if (game?.phase === 'player') {
+    if (game.input_source === 'physical') return 'Write ' + mark + ' on the physical board, then move your hand clear.';
+    if (game.input_source === 'handwriting') return 'Draw ' + mark + ', then confirm.';
+    return game.opponent === 'human' ? mark + ': Pick an empty cell.' : 'Pick an empty cell.';
+  }
+  if (game?.phase === 'between_rounds') return 'Start round two.';
+  if (game?.phase === 'finished') return outcome ? '' : 'Game over.';
+  return 'Ready to play.';
+}
+
 function render() {
   const game = state?.game;
   const mode = game && (game.mode === 'classic' ? String(game.size) : game.mode);
-  if (mode && mode !== activeMode) {
-    document.querySelector('input[name="size"][value="' + mode + '"]').checked = true;
-  }
-  activeMode = mode;
-  if (game && game.input_source !== activeInputSource) get('input-source').value = game.input_source;
-  activeInputSource = game ? game.input_source : undefined;
-  const isThreeStone = chosenMode() === 'four-three-stone';
-  const opponent = game?.opponent ?? 'ai';
-  if (game && opponent !== activeOpponent) get('opponent').value = opponent;
-  activeOpponent = game ? opponent : undefined;
-  const setupTwoPlayers = chosenOpponent() === 'human';
-  const twoPlayers = game ? opponent === 'human' : setupTwoPlayers;
-  get('opponent-option').hidden = !['3', 'four'].includes(chosenMode());
-  get('first-option').hidden = isThreeStone || setupTwoPlayers;
-  get('mark-label').textContent = setupTwoPlayers ? 'First symbol' : 'Your symbol';
-  get('input-option').hidden = !visionAvailable || !['3', 'four'].includes(chosenMode());
-  const vision = ['vision', 'handwriting'].includes(game?.input_source);
-  const handwriting = game?.input_source === 'handwriting';
-  get('three-stone-rules').hidden = !isThreeStone;
-  const size = game?.size ?? selected();
-  const showPoints = game ? game.mode === "score" : chosenMode() === "score";
+  const twoPlayers = (game?.opponent ?? saved.opponent) === 'human';
+  const vision = ['vision', 'handwriting', 'physical'].includes(game?.input_source);
+  const handwriting = game?.input_source === 'handwriting' && game.phase !== 'finished';
+  const size = game?.size ?? modes[saved.size].size;
+  const showPoints = game?.mode === "score";
   const ready = online && token && state && !['connecting','offline','blocked'].includes(state.state)
     && (!realEnvironment || (state.camera_fresh && state.robot_fresh));
   const busy = sending || state?.busy;
@@ -178,40 +259,43 @@ function render() {
     cell.firstElementChild.textContent = showPoints ? points + ' points' : '';
     cell.dataset.mark = mark;
     cell.dataset.winning = String(winCells.includes(index));
-    cell.disabled = !playable || Boolean(mark);
+    cell.disabled = !playable || game?.input_source === 'physical' || Boolean(mark);
     cell.setAttribute('aria-label', 'Row ' + (row+1) + ', column ' + (col+1) + ', ' + (mark || 'Empty') + (showPoints ? ', ' + points + ' points' : ''));
   });
   updateHandwriting(handwriting, playable, game?.revision);
   winLine.hidden = winCells.length === 0;
   winLine.dataset.mark = game?.winner ?? '';
   positionWinLine();
-  get('heading').textContent = ({'score': 'Scored Tic-Tac-Toe', 'four': 'Four-in-a-Row', 'four-three-stone': 'Four-in-a-Row · Three-stone opening', '9': 'Gomoku', '3': 'Tic-Tac-Toe'})[mode ?? chosenMode()];
-  const human = game?.human ?? get('mark').value;
-  get('roles').textContent = twoPlayers ? 'Player X · Player O'
-    : 'You play ' + human + ' · AI plays ' + (human === 'X' ? 'O' : 'X');
+  get('heading').textContent = ({'score': 'Scored Tic-Tac-Toe', 'four': 'Four-in-a-Row', 'four-three-stone': 'Four-in-a-Row · Three-stone opening', '9': 'Gomoku', '3': 'Tic-Tac-Toe'})[mode ?? saved.size];
+  const human = game?.human ?? saved.mark;
+  const primary = twoPlayers ? 'X' : human;
+  const secondary = primary === 'X' ? 'O' : 'X';
+  get('role-primary-icon').dataset.mark = primary;
+  get('role-secondary-icon').dataset.mark = secondary;
+  get('role-primary').textContent = (twoPlayers ? 'Player · ' : 'You · ') + primary;
+  get('role-secondary').textContent = (twoPlayers ? 'Player · ' : 'AI · ') + secondary;
   const robotConnected = online && token && state?.camera_fresh && state?.robot_fresh;
   get('connection').textContent = realEnvironment
     ? (robotConnected ? (state.state === 'blocked' ? 'Robot connected · Game paused' : 'Robot connected')
       : (online ? 'Waiting for robot feedback or camera' : 'Disconnected'))
-    : (ready ? 'Gazebo connected' : (online ? 'Simulation is not ready' : 'Disconnected'));
+    : (ready ? 'Simulation online' : (online ? 'Waiting for simulation' : 'Disconnected'));
+  get('connection').dataset.online = String(Boolean(realEnvironment ? robotConnected : ready));
   if (realEnvironment) {
     get('camera-heading').textContent = state?.frame_source === 'saved' ? 'Saved robot camera image' : 'Robot camera';
   }
-  const observed = state?.vision;
-  get('vision-status').textContent = observed
-    ? 'Camera frame ' + observed.sequence + ' · New mark consistency ' + observed.consecutive + ' / 3'
-      + (observed.confirmed ? ' · Confirmed row ' + (observed.confirmed[0]+1) + ', column ' + (observed.confirmed[1]+1) + ': ' + observed.confirmed[2] : '')
-    : (realEnvironment ? (state?.frame_source === 'saved' ? 'Saved YOLO detections. Waiting for a live connection.' : 'Update the board after three consistent camera frames') : '');
   start.disabled = !ready || busy;
   start.textContent = game ? 'New game' : 'Start game';
+  saveSettings.disabled = !settingsKey;
+  renderPipeline(game, vision, busy);
   stop.disabled = !online || !state?.busy;
   const resetReady = online && token && state && !['connecting','offline'].includes(state.state)
     && (!realEnvironment || (state.camera_fresh && state.robot_fresh));
   const resumeTurn = get('resume-turn');
   resumeTurn.hidden = !realEnvironment || !state?.continuation?.available || state?.state !== 'blocked';
-  resumeTurn.textContent = state?.continuation?.kind === 'grid' ? 'Resume remaining grid after inspection' : 'Resume turn after inspection';
+  resumeTurn.textContent = state?.continuation?.kind === 'grid' ? 'Resume grid' : 'Resume turn';
   resumeTurn.disabled = !online || !token || busy || !state?.camera_fresh || !state?.robot_fresh;
-  reset.disabled = !resetReady || busy || (!game && state.state !== 'blocked');
+  reset.hidden = !game && state?.state !== 'blocked';
+  reset.disabled = !resetReady || busy || reset.hidden;
   const points = get('points');
   points.hidden = !showPoints;
   const playerScore = game?.current_score?.player ?? {points: 0, lines: 0};
@@ -229,14 +313,14 @@ function render() {
   let outcome;
   if (game?.mode === 'score') {
     if (game.match_winner) {
-      const reason = {points: 'Winner determined by total points', lines: 'Winner determined by total line count', coin: 'Total points and line counts are tied, Random tiebreaker'};
+      const reason = {points: 'Points', lines: 'Line count', coin: 'Random tiebreak'};
       outcome = (game.match_winner === 'player' ? 'You win the match' : 'AI wins the match') +
         ' · ' + reason[game.decided_by];
     } else if (game.phase === 'between_rounds') {
       outcome = 'Round 1 score · You ' + playerScore.points + ' points, AI ' + aiScore.points + ' points';
     }
   } else {
-    outcome = game?.winner === 'draw' ? 'Draw' : game?.winner && (twoPlayers
+    outcome = game?.winner === 'draw' ? 'Game ended in a draw' : game?.winner && (twoPlayers
       ? 'Player ' + game.winner + ' wins' : (game.winner === game.human ? 'You win' : 'AI wins'));
   }
 
@@ -244,29 +328,20 @@ function render() {
   result.hidden = !outcome;
   result.textContent = outcome || '';
   result.dataset.outcome = game?.mode === 'score' ? (game.match_winner === 'player' ? 'X' : game.match_winner === 'ai' ? 'O' : 'draw') : game?.winner ?? '';
-  let message = state?.message ?? 'Connecting to local simulation…';
-  if (busy && game && ['drawing_x','thinking','drawing_o'].includes(game.phase)) {
-    const mark = game.phase === 'drawing_x' ? 'X' : 'O';
-    const action = game.phase === 'thinking' ? 'AI is choosing a cell' :
-      'The arm is drawing ' + (twoPlayers ? 'player ' : human === mark ? 'your ' : 'AI mark ') + mark;
-    message = action + ' · ' + message;
-  } else if (!busy && game) {
-    if (game.phase === 'between_rounds') message = 'The first player changes next round, You still play ' + human;
-    else if (game.phase === 'player') {
-      const expectedMark = twoPlayers ? game.turn : human;
-      const turn = twoPlayers ? "Player " + expectedMark + "'s turn. " : '';
-      message = turn + (vision
-        ? (handwriting ? 'Handwrite one ' + expectedMark + ' and press Draw and confirm' : 'Select an empty cell for proxy drawing ' + expectedMark) + ', Submit automatically after stable camera recognition'
-        : 'Select an empty cell to draw ' + expectedMark);
-    }
-    else if (game.phase === 'blocked' && state?.continuation?.available) message = state.message + '. Inspect the board, then use Resume; no original player stroke is replayed.';
-    else message = outcome ? 'Game finished. Start a new game' : phases[game.phase] || message;
-  }
-  if (busy && game?.phase === 'drawing_win_line') message = 'Drawing the winning line…';
-  if (busy && state?.reply_countdown > 0) message = 'Robot reply in ' + state.reply_countdown + ' s';
-  get('status').textContent = notice || message;
-  const cameraUrl = state?.camera_sequence
-    ? (cameraDetection.checked ? '/api/game/perception?view=camera_detections&seq=' : '/api/game/camera?seq=') + state.camera_sequence
+  const message = gameStatus(game, busy, ready, twoPlayers ? game?.turn : human, outcome);
+  const status = get('status');
+  if (status.textContent !== message) status.textContent = message;
+  const error = notice || (
+    ['blocked', 'failed'].includes(state?.state) || game?.phase === 'blocked' ? state?.message : ''
+  );
+  const details = get('game-error');
+  details.hidden = !error || error === message;
+  if (details.hidden) details.open = false;
+  const detailText = get('game-error-message');
+  if (detailText.textContent !== (error || '')) detailText.textContent = error || '';
+  const cameraSequence = state?.camera_sequence;
+  const cameraUrl = cameraSequence
+    ? (cameraDetection.checked ? '/api/game/perception?view=camera_detections&seq=' : '/api/game/camera?seq=') + cameraSequence
     : state?.game_frame ? '/api/game/frame?job=' + state.game_frame : null;
   if (cameraUrl !== frame) {
     frame = cameraUrl;
@@ -276,6 +351,14 @@ function render() {
         if (frame !== cameraUrl) return;
         image.src = gameURL(cameraUrl);
         image.hidden = false;
+        if (cameraSequence && cameraSequence !== lastCameraSequence) {
+          lastCameraSequence = cameraSequence;
+          cameraAdvancedAt = performance.now();
+        }
+        if (fadeCamera && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          image.animate([{opacity: .5}, {opacity: 1}], {duration: 170});
+        }
+        fadeCamera = false;
         get('preview').querySelector('p').hidden = true;
       };
       nextImage.onerror = () => { if (frame === cameraUrl) frame = undefined; };
@@ -296,28 +379,22 @@ async function refresh() {
     visionAvailable = config.vision_available === true;
     realEnvironment = config.environment === 'real';
     document.body.dataset.environment = config.environment;
+    // The playable grid is inset 2 mm along each edge of the calibrated board.
+    inkSize = [config.width_mm - 4, config.height_mm - 4];
+    get('camera-heading').textContent = realEnvironment ? 'Robot camera' : 'Simulation camera';
     if (realEnvironment) {
-      get('camera-heading').textContent = 'Robot camera';
       image.alt = 'Real tablet and robot arm';
       get('preview').querySelector('p').textContent = 'Waiting for robot camera image';
-      perception.open = true;
-      perceptionView.value = 'detections';
-      get('input-source').value = 'vision';
-      get('input-source').querySelector('[value=click]').disabled = true;
-      get('input-source').querySelector('[value=handwriting]').disabled = false;
-      get('input-source').querySelector('[value=vision]').textContent = 'Robot proxy drawing · Camera confirmation';
-      document.querySelectorAll('input[name=size]').forEach(input => {
-        if (!['3', 'four'].includes(input.value)) input.closest('label').hidden = true;
-      });
+      const workbenchUrl = gameMount ? '../' : config.workstation_url;
       get('canvas-link').textContent = 'Calibration workbench';
-      get('canvas-link').href = config.workstation_url;
-      board.style.aspectRatio = config.width_mm + '/' + config.height_mm;
+      get('canvas-link').href = workbenchUrl;
+      get('studio-calibration-link').href = workbenchUrl;
+      get('studio-canvas-link').href = new URL('canvas', new URL(workbenchUrl, location.href)).href;
+    } else {
+      get('studio-calibration-link').href = 'http://localhost:8766/';
+      get('studio-canvas-link').href = '/';
     }
-    const supportsThreeStone = config.game_modes?.includes('four-three-stone') === true;
-    get('three-stone-option').hidden = !supportsThreeStone;
-    if (!supportsThreeStone && chosenMode() === 'four-three-stone') {
-      document.querySelector('input[value="four"]').checked = true;
-    }
+    loadSettings(config.environment);
   }
   const response = await gameFetch('/api/status', {signal: AbortSignal.timeout(2500)});
   if (!response.ok) throw Error('Could not read status');
@@ -336,6 +413,7 @@ async function act(path, data) {
       body: JSON.stringify(data), signal: AbortSignal.timeout(3500)});
     if (!response.ok) throw Error((await response.json()).error || 'Request failed');
     await refresh();
+    return true;
   } catch (error) {
     notice = error.message;
     try { await refresh(); } catch { online = false; token = undefined; }
@@ -366,28 +444,48 @@ function resumePage() {
   // Reconcile server state after a frozen tab; never replay a motion request.
   token = undefined;
   frame = undefined;
-  renderedPerception = undefined;
-  perceptionRequest?.abort();
   clearTimeout(pollTimer);
-  void poll().then(() => updatePerception());
+  void poll();
 }
 document.addEventListener('visibilitychange', resumePage);
 document.addEventListener('resume', resumePage);
 window.addEventListener('pageshow', resumePage);
 window.addEventListener('focus', resumePage);
 window.addEventListener('online', resumePage);
-perception.addEventListener('toggle', resetPerception);
-perceptionView.addEventListener('change', resetPerception);
-setInterval(updatePerception, 850);
-start.addEventListener('click', () => {
-  if (!state?.game || window.confirm('Clear the current board and start a new game？')) {
-    act('/api/game/start', {size: selected(), mode: ['score', 'four', 'four-three-stone'].includes(chosenMode()) ? chosenMode() : 'classic',
-      first: chosenOpponent() === 'human' ? 'player' : get('first').value, mark: get('mark').value,
-      opponent: chosenOpponent(),
-      input_source: visionAvailable && ['3', 'four'].includes(chosenMode()) ? get('input-source').value : 'click'});
+settingsToggle.addEventListener('click', () => showSettings(settings.hidden, settingsToggle));
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !settings.hidden) {
+    event.preventDefault();
+    showSettings(false);
   }
 });
-get('opponent').addEventListener('change', render);
+saveSettings.addEventListener('click', () => {
+  if (!settingsKey) return;
+  saved = Object.fromEntries(settingsFields.map(name => [name, choice(name)]));
+  try { localStorage.setItem(settingsKey, JSON.stringify(saved)); } catch { /* The current tab still retains the settings. */ }
+  const feedback = get('settings-saved');
+  feedback.textContent = 'Saved for next game.';
+  feedback.hidden = false;
+  showSettings(false);
+  render();
+});
+start.addEventListener('click', async () => {
+  if (state?.game && !window.confirm('Clear the current board and start a new game?')) return;
+  const {size: mode, opponent, first, mark} = saved;
+  const started = await act('/api/game/start', {
+    size: modes[mode].size,
+    mode: mode === 'four' ? 'four' : 'classic',
+    first: opponent === 'human' ? 'player' : first,
+    mark,
+    opponent,
+    input_source: visionAvailable && saved['input-source'] !== 'click'
+      ? saved['input-source'] : realEnvironment ? 'vision' : 'click',
+  });
+  if (started) get('settings-saved').hidden = true;
+});
+settings.addEventListener('change', renderSettings);
+get('settings-close').addEventListener('click', () => showSettings(false));
+get('settings-back').addEventListener('click', () => showSettings(false));
 get('next').addEventListener('click', () => act('/api/game/next', {revision: state.game.revision}));
 stop.addEventListener('click', () => act('/api/stop', {}));
 reset.addEventListener('click', () => act('/api/reset', {}));
@@ -400,8 +498,6 @@ get('resume-turn').addEventListener('click', () => {
       original_job: state.continuation.original_job, inspected: true});
   }
 });
-document.querySelectorAll('input[name="size"]').forEach(input => input.addEventListener('change', render));
-get('mark').addEventListener('change', render);
 new ResizeObserver(positionWinLine).observe(board);
 const ink = get('handwriting');
 const inkContext = ink.getContext('2d');
@@ -420,7 +516,7 @@ function paintDraft() {
     stroke.forEach(([x,y], index) => inkContext[index ? 'lineTo' : 'moveTo'](x*box.width, y*box.height));
     inkContext.stroke();
   }
-  get('stroke-count').textContent = draft.length + ' strokes';
+  get('stroke-count').textContent = draft.length + (draft.length === 1 ? ' stroke' : ' strokes');
 }
 function updateHandwriting(show, playable, revision) {
   ink.hidden = get('handwriting-controls').hidden = !show;
@@ -455,18 +551,51 @@ ink.addEventListener('pointerup', finishInk);
 ink.addEventListener('pointercancel', () => { if (activeStroke) draft.pop(); activeStroke = null; render(); });
 get('undo-stroke').addEventListener('click', () => { draft.pop(); if (!draft.length) draftRevision = undefined; render(); });
 get('clear-draft').addEventListener('click', () => { draft = []; draftRevision = undefined; render(); });
+function boardStrokes(strokes, size, [width, height]) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw Error('Handwriting needs valid board dimensions.');
+  }
+  let left = 1, top = 1, right = 0, bottom = 0;
+  for (const stroke of strokes) {
+    for (const [x, y] of stroke) {
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  const col = Math.min(size - 1, Math.floor(left * size));
+  const row = Math.min(size - 1, Math.floor(top * size));
+  if (right > (col + 1) / size || bottom > (row + 1) / size) {
+    throw Error('Keep the entire mark within one cell.');
+  }
+  // Scale around the mark's center so the square preview preserves both shape
+  // and the chosen cell when mapped onto the longer physical axis.
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const scale = Math.min(width, height);
+  return strokes.map(stroke => stroke.map(([x, y]) => [
+    centerX + (x - centerX) * (scale / width),
+    centerY + (y - centerY) * (scale / height),
+  ]));
+}
+
 get('submit-handwriting').addEventListener('click', async () => {
   if (!inkEnabled || activeStroke || !draft.length) return;
-  const submitted = draft;
+  let submitted;
+  try {
+    submitted = boardStrokes(draft, state.game.size, inkSize ?? []);
+  } catch (error) {
+    notice = error.message;
+    render();
+    return;
+  }
   await act('/api/game/handwriting', {strokes: submitted, revision: draftRevision});
   if (!notice) { draft = []; draftRevision = undefined; render(); }
 });
 new ResizeObserver(paintDraft).observe(ink);
-const preset = location.hash.slice(1);
-if (['four', 'four-three-stone'].includes(preset)) {
-  document.querySelector('input[value="' + preset + '"]').checked = true;
-}
+renderSettings();
 render();
 poll();
 
-cameraDetection.addEventListener('change', () => { frame = undefined; render(); });
+cameraDetection.closest('.camera-switch').addEventListener('change', () => { fadeCamera = true; frame = undefined; render(); });

@@ -3,80 +3,178 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Robot board games</title>
+  <title>Robot Arena</title>
   <link rel="stylesheet" href="game.css">
   <script src="game.js" defer></script>
 </head>
 <body>
-  <header><h1>Robot board games</h1><a id="canvas-link" href="/">Back to canvas</a><span id="connection">Connecting Gazebo</span></header>
-  <main>
-    <section class="play" aria-label="Game board">
-      <p class="panel-label">Play</p>
-      <div class="board-heading"><h2 id="heading">Tic-Tac-Toe</h2><span id="roles">You play X · AI plays O</span></div>
-      <div class="tablet"><div class="board-wrap"><div id="board" class="board" aria-label="Board"></div><canvas id="handwriting" aria-label="Handwrite a mark on the board" hidden></canvas><span id="win-line" class="win-line" aria-hidden="true" hidden></span></div></div>
-      <div id="handwriting-controls" hidden>
-        <p>Write one X or O anywhere within one cell. The camera determines the move.</p>
-        <button id="undo-stroke" type="button">Undo stroke</button>
-        <button id="clear-draft" type="button">Clear draft</button>
-        <button id="submit-handwriting" type="button">Draw and confirm</button>
-        <span id="stroke-count"></span>
+  <header class="arena-header">
+    <div class="studio-nav">
+      <h1><span class="studio-mark" aria-hidden="true"></span>Robot Studio</h1>
+      <nav class="studio-tabs" aria-label="Workspaces">
+        <a id="studio-calibration-link" href="../">Calibration</a>
+        <a href="" aria-current="page">Arena</a>
+        <a id="studio-canvas-link" href="../canvas">Canvas</a>
+      </nav>
+      <div class="studio-actions">
+        <span id="connection" data-online="false" role="status">Connecting to simulation</span>
+        <button id="settings-toggle" class="quiet" type="button" aria-controls="game-settings" aria-expanded="false">Settings</button>
+        <button id="stop" class="stop" type="button" disabled>Stop motion</button>
       </div>
-      <p id="result" class="result" hidden></p>
-      <p id="status" role="status" aria-live="polite">Connecting to local simulation…</p>
-    </section>
-    <aside class="game-sidebar">
-      <section class="camera">
-        <p class="panel-label">Observation</p>
-        <div class="camera-heading"><h2 id="camera-heading">Simulation camera</h2><button id="stop" class="stop" disabled>Stop motion</button></div>
-        <div class="camera-switch" role="group" aria-label="Camera display"><span>Camera</span><label class="toggle"><input id="camera-detection" type="checkbox" aria-label="Show YOLO detections"><span aria-hidden="true"></span></label><span>Detection</span></div><div id="preview" class="preview"><p>Waiting for Gazebo Camera image</p><img id="image" alt="Gazebo tablet and robot arm" hidden></div>
-      </section>
-      <details id="perception" class="camera perception">
-        <summary>Perception preview</summary>
-        <label for="perception-view">Processing view
-          <select id="perception-view">
-            <option value="rectified">Rectified board</option>
-            <option value="edges">Edges</option>
-            <option value="detections">YOLO detections</option>
-          </select>
-        </label>
-        <div class="preview"><img id="perception-image" alt="Processed board image" hidden>
-          <p id="perception-message">Waiting for camera image</p>
+    </div>
+    <section id="game-settings" class="controls settings-panel" aria-labelledby="settings-title" hidden>
+      <div class="settings-content">
+        <div class="panel-heading">
+          <h2 id="settings-title">Game settings</h2>
+          <button id="settings-close" class="icon-button" type="button" aria-label="Close game settings">×</button>
         </div>
-        <p id="vision-status" aria-live="polite"></p><p id="perception-caption">Perspective correction using the current simulation board calibration.</p>
-      </details>
-      <section class="controls" aria-label="Game settings">
-        <p class="panel-label">Game setup</p>
-        <h2>Game controls</h2>
-        <fieldset>
+        <fieldset class="mode-options">
           <legend>Game mode</legend>
-          <label><input type="radio" name="size" value="3" checked><span>Tic-Tac-Toe <small>3 × 3 · Minimax</small></span></label>
-          <label><input type="radio" name="size" value="score"><span>Scored Tic-Tac-Toe <small>3 × 3 · Alternate first player</small></span></label>
-          <label><input type="radio" name="size" value="four"><span>Four-in-a-Row <small>9 × 9 · Connect four to win</small></span></label>
-          <label id="three-stone-option" hidden><input type="radio" name="size" value="four-three-stone"><span>Four-in-a-Row · Three-stone opening <small>9 × 9 · O moves first</small></span></label>
-          <label><input type="radio" name="size" value="9"><span>Gomoku <small>9 × 9 · Rapfi</small></span></label>
+          <label class="mode-option">
+            <input type="radio" name="size" value="3" checked>
+            <svg viewBox="0 0 30 30" class="mode-icon" aria-hidden="true">
+              <rect x="2" y="2" width="26" height="26" rx="2"/><path d="M11 2v26M19 2v26M2 11h26M2 19h26M4.5 4.5l4 4m0-4-4 4"/><circle cx="23.5" cy="23.5" r="2.5"/>
+            </svg>
+            <span>Tic-Tac-Toe <small>Classic · 3 × 3</small></span>
+            <span class="mode-check" aria-hidden="true">✓</span>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="size" value="four">
+            <svg viewBox="0 0 30 30" class="mode-icon" aria-hidden="true">
+              <rect x="2" y="2" width="26" height="26" rx="2"/><path d="M8.5 2v26M15 2v26M21.5 2v26M2 8.5h26M2 15h26M2 21.5h26"/>
+              <g fill="currentColor" stroke="none"><circle cx="5.25" cy="18.25" r="1.6"/><circle cx="11.75" cy="18.25" r="1.6"/><circle cx="18.25" cy="18.25" r="1.6"/><circle cx="24.75" cy="18.25" r="1.6"/></g>
+            </svg>
+            <span>Four-in-a-Row <small>Strategy · 9 × 9</small></span>
+            <span class="mode-check" aria-hidden="true">✓</span>
+          </label>
         </fieldset>
-        <div class="game-options">
-          <label id="opponent-option" for="opponent">Players
-            <select id="opponent"><option value="ai">Player vs AI</option><option value="human">Two players</option></select>
+        <div class="mode-preview" id="mode-preview" aria-label="Selected game rules" aria-live="polite">
+          <div id="preview-board" aria-hidden="true"></div>
+          <dl class="preview-rules">
+            <div><dt>Board</dt><dd id="preview-size"></dd></div>
+            <div><dt>Win</dt><dd id="preview-win"></dd></div>
+            <div><dt>Engine</dt><dd id="preview-engine"></dd></div>
+          </dl>
+        </div>
+        <fieldset class="configuration">
+          <legend>Match configuration</legend>
+          <div class="option-row">
+            <span id="opponent-label">Players</span>
+            <div class="segments" role="radiogroup" aria-labelledby="opponent-label">
+              <label><input type="radio" name="opponent" value="ai" checked><span>Player vs AI</span></label>
+              <label><input type="radio" name="opponent" value="human"><span>Two players</span></label>
+            </div>
+          </div>
+          <div class="option-row" id="first-option">
+            <span id="first-label">First move</span>
+            <div class="segments" role="radiogroup" aria-labelledby="first-label">
+              <label><input type="radio" name="first" value="player" checked><span>Player</span></label>
+              <label><input type="radio" name="first" value="ai"><span>AI</span></label>
+            </div>
+          </div>
+          <div class="option-row">
+            <span id="mark-label">Your symbol</span>
+            <div class="segments symbol-segments" role="radiogroup" aria-labelledby="mark-label">
+              <label><input type="radio" name="mark" value="X" aria-label="X" checked><span aria-hidden="true">×</span></label>
+              <label><input type="radio" name="mark" value="O" aria-label="O"><span aria-hidden="true">○</span></label>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset class="configuration" id="input-option" hidden>
+          <legend>Interaction</legend>
+          <div class="option-row">
+            <span id="input-label">Input method</span>
+            <div class="segments" role="radiogroup" aria-labelledby="input-label">
+              <label><input type="radio" name="input-source" value="click" checked><span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2v11l3.3-2.7 2.1 3.7 1.5-.8-2-3.7 4.4-.4z"/></svg>Click</span></label>
+              <label><input type="radio" name="input-source" value="handwriting"><span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 10 7.5-7.5 3 3L6 13l-3 1zM9 4l3 3"/></svg>Freehand</span></label>
+              <label id="physical-input" hidden><input type="radio" name="input-source" value="physical" disabled><span>Physical board</span></label>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+      <div class="settings-actions">
+        <button id="settings-back" class="plain-button" type="button">← Back</button>
+        <a id="canvas-link" href="/">Canvas</a>
+        <button id="save-settings" class="start" type="button" disabled>Save settings</button>
+      </div>
+    </section>
+  </header>
+  <main>
+    <section class="camera">
+      <div class="panel-heading">
+        <div><p class="section-label">Physical world</p><h2 id="camera-heading">Camera</h2></div>
+        <div class="camera-switch" role="radiogroup" aria-label="Camera display">
+          <label>
+            <input type="radio" name="camera-view" value="camera" checked>
+            <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="11" height="10" rx="2"/><path d="m13 8 5-3v10l-5-3"/></svg>
+            <span>Camera</span>
           </label>
-          <label id="first-option" for="first">First player
-            <select id="first"><option value="player">Player</option><option value="ai">AI</option></select>
-          </label>
-          <label for="mark"><span id="mark-label">Your symbol</span>
-            <select id="mark"><option value="X">X</option><option value="O">O</option></select>
-          </label>
-          <label id="input-option" for="input-source" hidden>Player input
-            <select id="input-source">
-              <option value="click">Click a cell</option>
-              <option value="handwriting">Freehand writing · Camera confirmation</option>
-              <option value="vision">Proxy drawing · Camera recognition</option>
-            </select>
+          <label>
+            <input id="camera-detection" type="radio" name="camera-view" value="detection">
+            <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 7V3h4m8 0h4v4M2 13v4h4m8 0h4v-4"/></svg>
+            <span>Detection</span>
           </label>
         </div>
-        <p id="three-stone-rules" hidden>Choose your symbol to start. The arm draws two X marks and one O. O moves first; connect four to win.</p>
-        <button id="start" class="start" disabled>Start game</button>
-        <button id="resume-turn" class="quiet" hidden>Resume turn after inspection</button>
-        <button id="reset" class="quiet" disabled>Clear board and end game</button>
+      </div>
+      <div id="preview" class="preview"><p>Waiting for camera image</p><img id="image" alt="Gazebo tablet and robot arm" hidden></div>
+      <section class="robot-status" aria-labelledby="robot-status-heading">
+        <h3 id="robot-status-heading">Robot status</h3>
+        <ol class="pipeline">
+          <li id="stage-perception" data-state="idle"><span>Perception</span><i aria-hidden="true"></i><small>Waiting</small></li>
+          <li id="stage-decision" data-state="idle"><span>Decision</span><i aria-hidden="true"></i><small>Idle</small></li>
+          <li id="stage-planning" data-state="idle"><span>Motion planning</span><i aria-hidden="true"></i><small>Idle</small></li>
+          <li id="stage-execution" data-state="idle"><span>Execution</span><i aria-hidden="true"></i><small>Idle</small></li>
+        </ol>
+      </section>
+    </section>
+    <div class="board-column">
+      <section class="play" aria-label="Board status and moves">
+        <div class="panel-heading">
+          <div><p class="section-label">Digital world</p><h2 id="heading">Tic-Tac-Toe</h2></div>
+          <div class="board-meta">
+            <span id="live-sync" data-live="false" hidden>
+              <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m8 12 4-4m-5 2-3 3a2.8 2.8 0 0 0 4 4l3-3m2-4 3-3a2.8 2.8 0 0 0-4-4l-3 3"/></svg>
+              <span id="live-sync-label">Waiting for camera</span>
+            </span>
+            <span id="roles" aria-label="Players">
+              <span class="role-item"><i class="role-icon" id="role-primary-icon" data-mark="X" aria-hidden="true"></i><span id="role-primary">You · X</span></span>
+              <span class="role-item"><i class="role-icon" id="role-secondary-icon" data-mark="O" aria-hidden="true"></i><span id="role-secondary">AI · O</span></span>
+            </span>
+          </div>
+        </div>
+        <div class="tablet"><div class="board-wrap"><div id="board" class="board" aria-label="Board"></div><canvas id="handwriting" aria-label="Handwrite a mark on the board" hidden></canvas><span id="win-line" class="win-line" aria-hidden="true" hidden></span></div></div>
+        <div id="handwriting-controls" hidden>
+          <p>Draw in one empty cell.</p>
+          <div class="drawing-actions" role="group" aria-label="Drawing tools">
+            <button id="undo-stroke" type="button" aria-label="Undo stroke" title="Undo stroke" disabled>
+              <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4-4 4 4 4M3 8h9a4 4 0 1 1 0 8H9"/></svg>
+            </button>
+            <button id="clear-draft" type="button" aria-label="Clear draft" title="Clear draft" disabled>
+              <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m4 14-1-1a2 2 0 0 1 0-2.8l6.8-6.8a2 2 0 0 1 2.8 0l3.3 3.3a2 2 0 0 1 0 2.8L9 16.4H6.5zM6 7.5l7 7M9 16.4h7"/></svg>
+            </button>
+            <button id="submit-handwriting" class="start" type="button" aria-label="Confirm move" title="Confirm move" disabled>
+              <svg class="control-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></svg>
+            </button>
+            <span id="stroke-count"></span>
+          </div>
+        </div>
+        <section class="board-footer" aria-labelledby="game-controls-heading">
+          <h3 id="game-controls-heading">Game controls</h3>
+          <p id="result" class="result" hidden></p>
+          <p id="settings-saved" class="settings-notice" role="status" hidden></p>
+          <div class="game-toolbar">
+            <p id="status" role="status" aria-live="polite">Connecting…</p>
+            <div class="board-actions">
+              <button id="start-game" class="start" type="button" disabled>Start game</button>
+              <button id="resume-turn" class="quiet" hidden>Resume turn</button>
+              <button id="reset" class="quiet" hidden disabled>Clear board and end game</button>
+            </div>
+          </div>
+          <details id="game-error" hidden>
+            <summary>Details</summary>
+            <p id="game-error-message"></p>
+          </details>
+        </section>
       </section>
       <section id="points" class="controls points" aria-labelledby="score-round" hidden>
         <h2 id="score-round">Round 1 / 2</h2>
@@ -89,9 +187,7 @@
         <p>Each player places four marks. Each three-in-a-row earns three bonus points. Players alternate the first move over two rounds.</p>
         <button id="next" class="start" hidden>Start round two · AI moves first</button>
       </section>
-
-
-    </aside>
+    </div>
   </main>
 </body>
 </html>

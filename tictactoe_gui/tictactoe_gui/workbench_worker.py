@@ -25,6 +25,7 @@ def workbench_worker(session):
     if session.environment == 'real':
         from tictactoe_driver.real_robot_driver import RealRobotDriver
         driver = RealRobotDriver(session.output, install_signal_handlers=False)
+        driver.on_motion_progress = lambda progress: session.update(motion_progress=progress)
     else:
         driver = SimulationDriver(session.output, install_signal_handlers=False)
     real_canvas = None
@@ -237,7 +238,6 @@ def workbench_worker(session):
             from pathlib import Path
             import yaml
             from ament_index_python.packages import get_package_share_directory
-            from tictactoe_motion.canvas.board_canvas import BoardCanvas
             from tictactoe_motion.actions.drawing_actions import DrawingActions
             if session.environment != 'real':
                 raise ValueError('Real drawing profile required')
@@ -387,6 +387,7 @@ def workbench_worker(session):
                 continue
             try:
                 command = session.jobs.get_nowait()
+                driver.reset_motion_progress()
             except queue.Empty:
                 continue
             try:

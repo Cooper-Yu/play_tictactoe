@@ -123,7 +123,8 @@ class CanvasSession:
             self.stop.clear()
             job = self.state['job']+1
             self.state.update(state='queued', message='Task submitted', busy=True,
-                              job=job, stroke=0, completed=0, total=len(strokes or []), events=[])
+                              job=job, stroke=0, completed=0, total=len(strokes or []), events=[],
+                              decision=None, motion_progress=None)
             self.jobs.put_nowait(dict(job=job, kind=kind, strokes=strokes, prepared=prepared, game_request=game_request))
         return job
 

@@ -162,7 +162,7 @@ class GameCoordinator:
 
     def _ai_turn(self, revision):
         self._check_cancelled()
-        self._update("thinking", revision)
+        self._update("thinking", revision, decision="choosing")
         if self.mode == THREE_STONE_MODE:
             target = self.game.suggest_move(randomize_four_ties=True)
         else:
@@ -171,7 +171,7 @@ class GameCoordinator:
         if target is None:
             raise RuntimeError("AI turn did not finish")
         mark = self.game.turn
-        self._update("drawing_" + self._mark(mark).lower(), revision)
+        self._update("drawing_" + self._mark(mark).lower(), revision, decision="chosen")
         self.game.play(mark, *target, **self._options())
 
     def _complete_round(self):

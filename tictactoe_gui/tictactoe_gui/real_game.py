@@ -40,7 +40,10 @@ def real_game_worker(session, *, url, perception, restore=None):
     """Keep motion serialized while an independent thread supplies live camera frames."""
     timing = Timeline(session.output)
     def progress(state):
-        session.update(message=state['message'], motion_job=state['job'])
+        values = dict(message=state['message'], motion_job=state['job'])
+        if state['job'] == getattr(client, 'last_command_job', None):
+            values['motion_progress'] = state.get('motion_progress')
+        session.update(**values)
 
     if restore:
         saved_path = Path(restore)
@@ -197,7 +200,8 @@ def real_game_worker(session, *, url, perception, restore=None):
                         with session.lock:
                             if session.state['busy'] or not session.jobs.empty():
                                 continue
-                            session.state.update(busy=True, state='running')
+                            session.state.update(busy=True, state='running',
+                                                 decision=None, motion_progress=None)
                             session.state['job'] += 1
                             revision = session.state['job']
                         winning_move = game.game.has_line(game.game.turn, found[0], found[1])

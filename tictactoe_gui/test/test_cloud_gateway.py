@@ -75,7 +75,7 @@ def test_cloud_game_namespace_keeps_workbench_and_game_separate(tmp_path):
     base = f'http://127.0.0.1:{gateway.server_port}'
     try:
         with urlopen(base+'/game/') as response:
-            assert b'Robot board games' in response.read()
+            assert b'<title>Robot Arena</title>' in response.read()
         with urlopen(base+'/game/game.js') as response:
             assert b'gameMount' in response.read()
         with urlopen(base+'/game/api/config') as response:

@@ -17,9 +17,16 @@ def test_real_session_rejects_direct_state_move(tmp_path):
         s.submit('game_start', game_request={'size':3, 'input_source':'click'})
 
 
-@pytest.mark.parametrize("source", ["vision", "handwriting"])
+def test_physical_board_input_requires_real_session(tmp_path):
+    session = CanvasSession(tmp_path, None, vision_available=True, environment='sim')
+    session.update(state='ready')
+    with pytest.raises(ValueError, match='requires the real robot'):
+        session.submit('game_start', game_request={'size': 3, 'input_source': 'physical'})
+
+
+@pytest.mark.parametrize("source", ["vision", "handwriting", "physical", "physical_stop"])
 @pytest.mark.parametrize("size,mode,cell", [(3,"classic",0), (9,"four",8)])
-def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp_path, size, mode, cell, source):
+def test_real_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp_path, size, mode, cell, source):
     world = SimpleNamespace(cells={}, sequence=0, moves=[], detection_sequences=[])
     class Response:
         content = b'camera'
@@ -85,16 +92,45 @@ def test_proxy_turn_is_committed_only_after_three_camera_frames(monkeypatch, tmp
             time.sleep(.02)
     try:
         wait(lambda:s.status()['state']=='ready')
-        s.submit('game_start', game_request={'size':size,'mode':mode,'input_source':source})
+        input_source = 'physical' if source.startswith('physical') else source
+        s.submit('game_start', game_request={'size':size,'mode':mode,'input_source':input_source})
         wait(lambda:not s.status()['busy'])
         revision=s.status()['game']['revision']
+        if input_source != 'physical':
+            world.cells[(cell, cell)] = frozenset(('X',))
+            first_sequence = world.sequence
+            wait(lambda: world.sequence >= first_sequence + 5)
+            assert s.status()['game']['board'][cell][cell] == ''
+            assert not world.detection_sequences
+            world.cells.clear()
+        else:
+            with pytest.raises(RuntimeError, match='input mode'):
+                s.submit('game_vision_move', game_request={'row':cell, 'col':cell, 'revision':revision})
         if source == 'handwriting':
             center=(cell+.5)/size;d=.15/size
             strokes=[[[center-d,center-d],[center+d,center+d]],
                      [[center+d,center-d],[center-d,center+d]]]
             s.submit('game_handwriting',strokes,{'revision':revision})
-        else:
+        elif source == 'vision':
             s.submit('game_vision_move', game_request={'row':cell,'col':cell,'revision':revision})
+        else:
+            start = time.monotonic()
+            world.cells[(cell, cell)] = frozenset(('X',))
+            wait(lambda: s.status().get('reply_countdown') == 2)
+            assert world.moves == ['reset']
+            if source == 'physical_stop':
+                s.request_stop()
+                wait(lambda: not s.status()['busy'])
+                assert s.status()['state'] == 'blocked'
+                assert s.status()['game']['phase'] == 'blocked'
+                assert s.status()['reply_countdown'] is None
+                assert world.moves == ['reset']
+                return
+            wait(lambda: s.status().get('reply_countdown') == 1)
+            assert world.moves == ['reset']
+            wait(lambda: not s.status()['busy'])
+            assert time.monotonic() - start >= 2
+            assert s.status()['reply_countdown'] is None
         wait(lambda:not s.status()['busy'])
         assert s.status()['state']=='ready', s.status()
         assert s.status()['game']['board'][cell][cell]=='X'

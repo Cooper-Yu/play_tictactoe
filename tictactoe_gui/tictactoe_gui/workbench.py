@@ -175,7 +175,8 @@ class WorkbenchSession:
                 raise RuntimeError('No executable plan')
             self.stop.clear()
             command['job'] = self.state['job'] + 1
-            self.state.update(busy=True, state='queued', message='Operation submitted', job=command['job'])
+            self.state.update(busy=True, state='queued', message='Operation submitted', job=command['job'],
+                              motion_progress=None)
             self.jobs.put_nowait(command)
         return command['job']
 
@@ -292,8 +293,8 @@ def make_handler(session):
                 return self.send(200, frame, 'image/jpeg') if frame else self.send(404, {'error': 'No screenshot attached'})
             static = {'/': ('workbench.html', 'text/html; charset=utf-8'),
                       '/canvas': ('canvas.html', 'text/html; charset=utf-8'),
-                      '/canvas.js': ('canvas.js', 'text/javascript; charset=utf-8'),
-                      '/canvas.css': ('canvas.css', 'text/css; charset=utf-8'),
+                      '/canvas.js': ('app.js', 'text/javascript; charset=utf-8'),
+                      '/canvas.css': ('style.css', 'text/css; charset=utf-8'),
                       '/workbench.js': ('workbench.js', 'text/javascript; charset=utf-8'),
                       '/workbench.css': ('workbench.css', 'text/css; charset=utf-8')}
             if url.path not in static:

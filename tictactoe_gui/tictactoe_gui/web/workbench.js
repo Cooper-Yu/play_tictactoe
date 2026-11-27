@@ -31,8 +31,8 @@ async function command(data) {
 function renderControls() {
   const blocked = !token || requestBusy || state.busy || ['connecting','offline','blocked','stopping','recovering'].includes(state.state) || !state.fresh;
   for (const button of document.querySelectorAll('[data-axis], #plan-preset, #record')) button.disabled = blocked || (button.dataset.axis==='z' && Number($('step').value)>.02);
-  $('real-drawing').hidden = state.environment !== 'real';
-  $('drawing-hint').hidden = state.environment !== 'real';
+  $('drawing-test').hidden = state.environment !== 'real';
+
   $('draw').disabled = blocked || state.environment !== 'real';
   $('reset-cycle').disabled = blocked || !state.records?.['Reset hover'] || !state.records?.Reset;
   $('execute').disabled = blocked || !state.plan;
@@ -47,31 +47,99 @@ $('step').onchange=renderControls;
 $('ack-recovery').onclick=()=>command({kind:'acknowledge_recovery',job:state.feedback_recovery.job});
 function renderRecords() {
   const records = state.records || {};
-  const names = [...new Set([...fixedNames, ...Object.keys(records)])];
-  const key = JSON.stringify([records, selected]);
+  const {width_mm, height_mm} = state.canvas || {};
+  const calibrated = Number.isFinite(width_mm) && width_mm > 0 &&
+    Number.isFinite(height_mm) && height_mm > 0;
+  const boardAspect = calibrated ? width_mm + ' / ' + height_mm : '';
+  const key = JSON.stringify([records, selected, boardAspect]);
   if (key === lastRecordKey) return;
-  lastRecordKey = key; $('records').replaceChildren();
-  $('record-count').textContent = `${fixedNames.filter(name => records[name]).length} / 5 Recorded`;
-  for (const name of names) {
+  lastRecordKey = key;
+  $('record-count').textContent = `${fixedNames.filter(name => records[name]).length} / 5 recorded`;
+
+  const focusedName = document.activeElement?.dataset.record;
+  const makeButton = name => {
     const button = document.createElement('button');
-    button.className = 'record-card'+(selected === name ? ' selected' : '');
-    const title = document.createElement('b'); title.textContent = name; button.append(title);
-    const detail = document.createElement('small');
-    detail.textContent = records[name] ? (records[name].screenshot ? 'Recorded · Screenshot attached' : 'Recorded · No matching screenshot') : 'Not recorded'; button.append(detail);
-    if (records[name]?.screenshot) {
-      const img = document.createElement('img'); img.alt = name+' Recorded screenshot';
-      img.src = 'api/snapshot?name='+encodeURIComponent(name)+'&v='+encodeURIComponent(JSON.stringify(records[name].pose_stamped.header.stamp)); button.append(img);
-    }
-    button.onclick = () => {selected=name; $('record-name').value=name; renderRecords(); renderControls();};
-    $('records').append(button);
+    button.type = 'button';
+    button.className = 'record-marker';
+    button.dataset.record = name;
+    button.dataset.saved = String(Boolean(records[name]));
+    button.setAttribute('aria-pressed', String(selected === name));
+    button.title = records[name] ? 'Recorded' : 'Not recorded';
+    const dot = document.createElement('span');
+    dot.className = 'marker-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'record-label';
+    label.textContent = name === 'Reset' ? 'Reset position' : name;
+    button.append(dot, label);
+    button.onclick = () => {
+      selected = name;
+      $('record-name').value = name;
+      renderRecords();
+      renderControls();
+    };
+    return button;
+  };
+  const surface = document.createElement('span');
+  surface.className = 'drawing-surface';
+  surface.textContent = 'Drawing surface';
+  const board = document.createElement('div');
+  board.className = 'board-map';
+  if (boardAspect) board.style.setProperty('--board-aspect', boardAspect);
+  board.append(surface, ...fixedNames.slice(1).map(makeButton));
+  $('records').replaceChildren(board, makeButton('Reset'));
+  const extra = Object.keys(records).filter(name => !fixedNames.includes(name));
+  $('additional').hidden = !extra.length;
+  $('additional-records').replaceChildren(...extra.map(makeButton));
+  if (focusedName) {
+    [...document.querySelectorAll('[data-record]')]
+      .find(button => button.dataset.record === focusedName)?.focus();
   }
+
   const record = records[selected];
-  $('record-detail').textContent = record ? `${selected} · X ${(record.pose_stamped.pose.position.x*1000).toFixed(2)} / Y ${(record.pose_stamped.pose.position.y*1000).toFixed(2)} / Z ${(record.pose_stamped.pose.position.z*1000).toFixed(2)} mm · base_link / link6 · joint1–joint6 saved` : 'Select a record to view its pose';
+  const position = record?.pose_stamped?.pose?.position;
+  $('saved-title').textContent = selected;
+  $('saved-state').textContent = record
+    ? record.screenshot ? 'Recorded' : 'Recorded · No matching screenshot'
+    : 'Not recorded';
+  const savedImage = $('saved-image');
+  savedImage.hidden = !record?.screenshot;
+  if (record?.screenshot) {
+    savedImage.alt = selected + ' camera screenshot';
+    savedImage.src = 'api/snapshot?name=' + encodeURIComponent(selected) +
+      '&v=' + encodeURIComponent(JSON.stringify(record.pose_stamped.header.stamp));
+  } else {
+    savedImage.removeAttribute('src');
+  }
+  const values = [];
+  if (position) {
+    for (const axis of ['x', 'y', 'z']) {
+      values.push([axis.toUpperCase(), (position[axis] * 1000).toFixed(2) + ' mm']);
+    }
+    for (const [joint, value] of Object.entries(record.joint_state?.positions || {})) {
+      values.push([joint, (value * 180 / Math.PI).toFixed(2) + '°']);
+    }
+  }
+  $('saved-values').replaceChildren(...values.map(([label, value]) => {
+    const term = document.createElement('dt');
+    const detail = document.createElement('dd');
+    term.textContent = label;
+    detail.textContent = value;
+    const row = document.createElement('div');
+    row.append(term, detail);
+    return row;
+  }));
 }
 function render() {
   const real = state.environment === 'real';
   if(appliedEnvironment !== state.environment && state.environment) {
-    appliedEnvironment=state.environment;
+    appliedEnvironment = state.environment;
+    if (!real && ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) && location.port === '8766') {
+      const canvasUrl = new URL(location.href);
+      canvasUrl.port = '8765';
+      $('canvas-nav').href = new URL('/', canvasUrl).href;
+      $('arena-nav').href = new URL('/game', canvasUrl).href;
+    }
     if(real) {
       if(![...$('step').options].some(o=>o.value==='0.05')) $('step').add(new Option('50 mm (XY)','0.05'));
       const speed = $('speed');
@@ -88,11 +156,14 @@ function render() {
   $('environment-label').textContent='ROS 2 / MoveIt 2 · '+(real?'Real robot mode':'Simulation mode');
   $('status').textContent = state.message || 'Waiting for connection';
   $('storage').textContent = state.storage ? 'Record storage(WSL): '+state.storage : '';
-  $('connection').textContent = state.state === 'offline' ? 'Workbench disconnected' : state.fresh ? '● '+(real?'Robot':'Simulation')+'connected' : 'Waiting for arm feedback';
-  $('feedback').textContent = state.fresh ? 'Actual feedback · base_link → link6' : 'Feedback is stale / Waiting for data';
+  $('connection').textContent = state.state === 'offline' ? 'Workbench disconnected' : state.fresh ? '● '+(real?'Robot':'Simulation')+' online' : 'Waiting for arm feedback';
+  $('feedback').textContent = state.fresh ? '● Actual feedback' : 'Feedback is stale / Waiting for data';
   $('feedback').classList.toggle('stale', !state.fresh);
   for (const axis of ['x','y','z']) $('p'+axis).textContent = state.pose && state.fresh ? (state.pose[axis]*1000).toFixed(2) : '—';
-  $('rpy').textContent = state.pose && state.fresh ? state.pose.rpy.map(v => (v*180/Math.PI).toFixed(2)+'°').join(' / ') : '—';
+  ['roll', 'pitch', 'yaw'].forEach((axis, index) => {
+    const angle = state.pose?.rpy?.[index];
+    $(axis).textContent = state.fresh && Number.isFinite(angle) ? (angle * 180 / Math.PI).toFixed(2) : '—';
+  });
   $('quaternion').textContent = state.pose ? 'Quaternion xyzw: '+state.pose.quaternion.map(v=>v.toFixed(5)).join(', ') : '';
   $('joints').replaceChildren();
   for (let i=1;i<=6;i++) {const span=document.createElement('span'); const value=state.joints?.['joint'+i]; span.textContent=`J${i}　${state.fresh && Number.isFinite(value) ? (value*180/Math.PI).toFixed(2)+'°' : '—'}`; $('joints').append(span);}
@@ -103,7 +174,7 @@ function render() {
     $('topic').dataset.topics=JSON.stringify(topics); $('topic').value=state.camera?.topic || topics[0] || '';
   }
   const camera=state.camera || {};
-  $('resolution').textContent = camera.width ? `${camera.width} × ${camera.height} · ${camera.encoding}` : 'Waiting for image';
+  $('resolution').textContent = camera.width ? `${camera.width} × ${camera.height} · ${camera.encoding.toUpperCase()}${camera.fps ? ' · '+camera.fps.toFixed(1)+' fps' : ''}` : 'Waiting for image';
   $('camera-badge').textContent = camera.fresh ? 'LIVE · '+(real?'Robot':'Simulation')+' camera' : camera.sequence ? 'Camera delayed · Showing the last frame' : 'Waiting for live camera';
   $('camera-badge').classList.toggle('stale', !camera.fresh);
   $('camera-info').textContent = camera.error || (camera.frame_id ? `${camera.frame_id} · Frame age ${camera.age_s?.toFixed(1)} s${camera.fps ? ' · '+camera.fps.toFixed(1)+' fps' : ''}` : 'Select a sensor_msgs/msg/Image topic');
@@ -122,7 +193,22 @@ function drawRaw() {
   raw.width=rawImage.naturalWidth;raw.height=rawImage.naturalHeight;
   const ctx=raw.getContext('2d');ctx.drawImage(rawImage,0,0);
   const box=drag ? normalize(drag.start,drag.end) : roi;
-  if(box) {ctx.strokeStyle='#49e3d3';ctx.lineWidth=Math.max(1,raw.width/300);ctx.fillStyle='#49e3d326';ctx.fillRect(box[0]*raw.width,box[1]*raw.height,box[2]*raw.width,box[3]*raw.height);ctx.strokeRect(box[0]*raw.width,box[1]*raw.height,box[2]*raw.width,box[3]*raw.height);}
+  if (box) {
+    const [x, y, width, height] = box.map((value, index) => value * (index % 2 ? raw.height : raw.width));
+    const line = Math.max(1, raw.width / 540);
+    ctx.fillStyle = '#07181d66';
+    ctx.fillRect(0, 0, raw.width, y);
+    ctx.fillRect(0, y + height, raw.width, raw.height - y - height);
+    ctx.fillRect(0, y, x, height);
+    ctx.fillRect(x + width, y, raw.width - x - width, height);
+    ctx.strokeStyle = '#49e3d3';
+    ctx.lineWidth = line;
+    ctx.strokeRect(x, y, width, height);
+    ctx.fillStyle = '#c0fff5';
+    for (const [left, top] of [[x, y], [x + width, y], [x, y + height], [x + width, y + height]]) {
+      ctx.fillRect(left - line, top - line, 2 * line, 2 * line);
+    }
+  }
 }
 function normalize(a,b) {return [Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(a[0]-b[0]),Math.abs(a[1]-b[1])];}
 function point(event) {
@@ -134,7 +220,11 @@ raw.onpointerdown=event=>{if(!state.camera?.fresh) return; raw.setPointerCapture
 raw.onpointermove=event=>{if(drag){drag.end=point(event);drawRaw();}};
 raw.onpointerup=event=>{if(!drag)return;drag.end=point(event);const candidate=normalize(drag.start,drag.end);if(candidate[2]*raw.width>=2 && candidate[3]*raw.height>=2)roi=candidate;drag=null;betaRevision++;updateRoi();drawRaw();};
 raw.onpointercancel=()=>{drag=null;drawRaw();};
-function updateRoi() {updateEnhancementControls();$('roi-label').textContent=roi ? `Selection: ${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : 'Selection: Full image';}
+function updateRoi() {
+  updateEnhancementControls();
+  $('enhancement-source').textContent = roi ? 'Selected region' : 'Full image';
+  $('roi-label').textContent=roi ? `Selection: ${Math.round(roi[2]*raw.width)} × ${Math.round(roi[3]*raw.height)} px` : 'Selection: Full image';
+}
 async function loadImage(url) {
   const response=await fetch(url,{signal:AbortSignal.timeout(4000)});if(!response.ok)throw new Error('Image unavailable');
   const objectUrl=URL.createObjectURL(await response.blob());

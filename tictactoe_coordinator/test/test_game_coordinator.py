@@ -40,6 +40,9 @@ def test_human_and_ai_confirm_in_order_and_align_to_camera():
     assert [stage["phase"] for stage in phases] == [
         "preparing", "player", "drawing_x", "thinking", "drawing_o", "player"
     ]
+    assert [(value["game"]["phase"], value["decision"]) for value in statuses if "decision" in value] == [
+        ("thinking", "choosing"), ("drawing_o", "chosen")
+    ]
     assert phases[2]["board"][0][1] == ""
     assert phases[3]["board"][0][1] == "X"
     assert phases[-1]["board"][0][0] == "O"

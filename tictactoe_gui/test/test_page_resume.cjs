@@ -20,7 +20,7 @@ const context = {
 vm.createContext(context);
 const game = fs.readFileSync(path.join(web, 'game.js'), 'utf8');
 vm.runInContext(game.slice(game.indexOf('let pollTimer;'),
-                          game.indexOf("perception.addEventListener('toggle'")), context);
+                          game.indexOf("settingsToggle.addEventListener('click'")), context);
 (async () => {
   await vm.runInContext('poll()', context);
   assert.equal(timers.size, 1);
@@ -38,15 +38,15 @@ vm.runInContext(game.slice(game.indexOf('let pollTimer;'),
   const canvas = {
     document: {hidden:false, addEventListener:(name,fn)=>{canvasEvents[name]=fn;}},
     window: {addEventListener:(name,fn)=>{canvasEvents[name]=fn;}},
-    token:'old', imageSequence:10, strokes:[[1,2]], paint:()=>{canvasPaints++;}, poll:()=>{reads++;}
+    token:'old', cameraSequence:10, epoch:0, cameraEpoch:0, strokes:[[1,2]], paint:()=>{canvasPaints++;}, poll:()=>{reads++;}
   };
   vm.createContext(canvas);
-  const source = fs.readFileSync(path.join(web,'canvas.js'),'utf8');
-  vm.runInContext(source.slice(source.indexOf('function resumeCanvas()')),canvas);
+  const source = fs.readFileSync(path.join(web,'app.js'),'utf8');
+  vm.runInContext(source.slice(source.indexOf('function resume()'), source.lastIndexOf('\npaint();')),canvas);
   canvasEvents.focus();
-  assert.equal(canvas.token,null);
+  assert.equal(canvas.token,undefined);
   assert.equal(canvasPaints,1,'Controls must disable immediately while a new session token is pending');
-  assert.equal(canvas.imageSequence,undefined);
+  assert.equal(canvas.cameraSequence,undefined);
   assert.deepEqual(canvas.strokes,[[1,2]],'Draft strokes must survive focus changes');
   console.log('PASS: background recovery, one polling loop, no command replay, canvas draft preserved');
 })().catch(error => {console.error(error); process.exitCode = 1;});

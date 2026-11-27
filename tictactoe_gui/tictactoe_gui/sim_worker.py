@@ -32,6 +32,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
 
     profile = yaml.safe_load((Path(get_package_share_directory('tictactoe_motion'))/'config/board_sim.yaml').read_text())
     driver = SimulationDriver(session.output, install_signal_handlers=False)
+    driver.on_motion_progress = lambda progress: session.update(motion_progress=progress)
     renderer = None
     stopped = {'handled': False}
     frame = {'message': None, 'sequence': 0, 'last_preview': 0.0}
@@ -191,6 +192,7 @@ def simulation_worker(session, *, fast_game=False, perception=None):
             except queue.Empty:
                 continue
             started = time.monotonic()
+            driver.reset_motion_progress()
             driver.results = []
             stopped['handled'] = False
             evidence = copy.deepcopy(job)
