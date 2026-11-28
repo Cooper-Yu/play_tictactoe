@@ -112,13 +112,15 @@ class Workstation:
                 (self.output/f'job-{job}.json').write_text(json.dumps(record, ensure_ascii=False, indent=2))
                 if state['state'] != 'ready' or state.get('last_stop', {}).get('job') == job:
                     raise RuntimeError(state['message'])
-                expected = {'canvas': 'Drawing motion completed; pen raised. Check the actual ink.',
+                expected = {'canvas': 'Drawing completed; returned to clear. Check the actual ink.',
                             'preset': 'Operation completed', 'execute': 'Operation completed',
                             'reset': 'Reset completed; returned to clearance pose. Confirm that the board is clear.'}
                 if state['message'] != expected[command['kind']]:
                     raise RuntimeError(state['message'])
-                if command['kind'] == 'canvas' and not state.get('drawing_result', {}).get('motion_completed'):
-                    raise RuntimeError(state['message'])
+                if command['kind'] == 'canvas':
+                    result = state.get('drawing_result', {})
+                    if not result.get('motion_completed') or not result.get('returned_to_clear'):
+                        raise RuntimeError('Canvas drawing and return to clear must both complete')
                 if command['kind'] == 'preset' and not state.get('plan'):
                     raise RuntimeError(state['message'])
                 timing('command_complete', job=job, kind=command['kind'], seconds=record['seconds'])

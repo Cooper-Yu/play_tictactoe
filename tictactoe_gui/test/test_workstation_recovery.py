@@ -41,6 +41,20 @@ def test_stale_feedback_recovers_before_single_submission(tmp_path, monkeypatch)
     assert 'waiting_for_fresh_feedback' in (tmp_path/'connection_events.jsonl').read_text()
 
 
+@pytest.mark.parametrize('returned', [True, False])
+def test_canvas_completion_requires_return_to_clear(tmp_path, monkeypatch, returned):
+    final = dict(status(job=1),
+                 message='Drawing completed; returned to clear. Check the actual ink.',
+                 drawing_result=dict(motion_completed=True, returned_to_clear=returned))
+    c = client(tmp_path, monkeypatch, [status(), final])
+    if returned:
+        assert c.command(kind='canvas', strokes=[], speed=.45) is final
+    else:
+        with pytest.raises(RuntimeError, match='return to clear must both complete'):
+            c.command(kind='canvas', strokes=[], speed=.45)
+    assert len(c.posts) == 1
+
+
 def test_persistent_stale_feedback_sends_nothing(tmp_path, monkeypatch):
     c = client(tmp_path, monkeypatch, [status(fresh=False)])
     with pytest.raises(RuntimeError, match='no command sent'):
