@@ -304,6 +304,12 @@ def workbench_worker(session):
                                drawing_progress=value)
             try:
                 result = action.run(driver, cancelled=session.stop.is_set, on_stage=progress)
+                session.update(message='Canvas: returning to clear',
+                               drawing_progress=dict(stage='return_clear',
+                                                     source_stroke=action.input_count,
+                                                     total_input_strokes=action.input_count))
+                action.return_to_clear(driver, cancelled=session.stop.is_set)
+                result.update(returned_to_clear=True, stages=copy.deepcopy(action.stages))
                 report.update(result)
                 session.update(drawing_result=dict(result, report=str(destination)))
             except BaseException as error:
@@ -398,7 +404,7 @@ def workbench_worker(session):
                 if session.stop.is_set():
                     raise RuntimeError('Operation cancelled')
                 perform(command)
-                session.update(state='ready', busy=False, message=('Reset completed; returned to clearance pose. Confirm that the board is clear.' if command['kind'] == 'reset' else 'Drawing motion completed; pen raised. Check the actual ink.' if command['kind'] in ('draw', 'canvas') else 'Operation completed'))
+                session.update(state='ready', busy=False, message=('Reset completed; returned to clearance pose. Confirm that the board is clear.' if command['kind'] == 'reset' else 'Drawing completed; returned to clear. Check the actual ink.' if command['kind'] == 'canvas' else 'Drawing motion completed; pen raised. Check the actual ink.' if command['kind'] == 'draw' else 'Operation completed'))
             except Exception as error:
                 driver.node.invalidate_plan()
                 if driver.execution.is_executing and not session.stop.is_set():

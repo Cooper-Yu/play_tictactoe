@@ -104,3 +104,25 @@ class CanvasAction:
         return dict(motion_completed=True, ink_confirmed=None, shape='canvas',
                     input_strokes=self.input_count, strokes=len(self.prepared)+extra_parts-replaced_parts,
                     stages=copy.deepcopy(self.stages))
+
+    def return_to_clear(self, driver, cancelled=lambda: False):
+        """Return only after a successful, fresh, pen-up completion."""
+        if cancelled():
+            raise RuntimeError('Drawing cancelled before return to clear')
+        if not self.stages or self.stages[-1].get('stage') != 'exit_lift':
+            raise RuntimeError('Successful exit lift required before return to clear')
+        if self.stages[-1].get('result', {}).get('passed') is not True:
+            raise RuntimeError('Verified exit lift required before return to clear')
+        if not driver.node.feedback_is_fresh():
+            raise RuntimeError('Fresh feedback required before return to clear')
+        height = driver.current_pose().position.z
+        clearance = self.drawings[-1].transfer_z
+        if not math.isfinite(height) or height < clearance - .0001:
+            raise RuntimeError('Pen-up clearance required before return to clear')
+        if cancelled():
+            raise RuntimeError('Drawing cancelled before return to clear')
+        result = driver.named('clear')
+        self.stages.append(dict(stage='return_clear', result=copy.deepcopy(result)))
+        if not isinstance(result, dict) or result.get('passed') is not True:
+            raise RuntimeError('Canvas return to clear failed verification')
+        return result

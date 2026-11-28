@@ -185,3 +185,20 @@ transport outages and universal 9x9 recognition are not claimed.
 - The final camera-wait message and this report are a local follow-up to cloud
   revision 4c2526d. The restored project did not expose a unique terminal #3,
   so final cloud synchronization/restart was not verified this session.
+# 2026-11-28 Canvas completion return
+
+User-authorized repair: after all Canvas batches and the verified exit lift,
+the workstation returns to the named `clear` target before reporting completion.
+Cancellation, stale feedback, insufficient pen-up height or failed exit lift
+prevent that return. A rejected return is reported as a failure.
+
+Local Ubuntu-22.04 / ROS Humble evidence:
+
+- `python3 -m pytest tictactoe_gui/test/test_canvas_return_clear.py tictactoe_gui/test/test_real_canvas.py -q`: 36 passed.
+- `colcon build --base-paths src/play_tictactoe --packages-select tictactoe_gui --event-handlers console_direct+`: one package built successfully.
+- `git diff --check`: passed. No live robot motion performed.
+
+Mocked driver checks cover normal return, cancellation, stale feedback, failed
+lift, insufficient/invalid height and rejected return. Cloud build and physical
+return-to-clear acceptance remain separate from these local checks. Existing
+tablet-model work is outside this repair's commit scope.
